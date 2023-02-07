@@ -11,12 +11,13 @@ import time
 
 class IslandGGA():
 
-    def __init__(self,num_island,num_iter,data,strategies,pSize,m_iter,N,K,r_cross,r_mut,r_inv,n,b,stop_loss,take_profit,allocated_capital):
+    def __init__(self,num_islands,num_iter,data,strategies,pSize,m_iter,N,K,r_cross,r_mut,r_inv,n,b,stop_loss,take_profit,allocated_capital):
         self.data = data
         self.K = K
         self.pSize = pSize
         self.strategies = strategies
-        self.num_islands = num_island
+        self.num_islands = num_islands
+        self.N = N
         self.m_iter = m_iter
         self.r_cross= r_cross
         self.r_mut = r_mut
@@ -49,7 +50,7 @@ class IslandGGA():
             last_date = datetime(year, month, 31)
         else:
             last_date = datetime(year, month + 1, 1) + timedelta(days=-1)
-        
+        last_date = last_date.date()
         return last_date
 
 
@@ -67,16 +68,17 @@ class IslandGGA():
         tp = self.take_profit/max_tp * tp
 
         return sl,tp
+#################
 
-
-    def generate_trading_signal(self,strategy,chromosome_stop_loss,chromosome_take_profit):
+    def generate_trading_signal(self,strategy,stop_loss,take_profit):
+        data = self.data
         monthly_returns = []
         monthly_return = 0
         trade_freq = 0
         monthly_freq = 0
         market_position = 'out'
         max_loss = 0
-        for row in self.data.itertuples(index=False):    
+        for row in data.itertuples(index=False):    
             #close all trade positions at month end. 
             last_date = self.get_last_date_of_month(row.Date.year,row.Date.month)
             if row.Date == last_date :
@@ -90,7 +92,7 @@ class IslandGGA():
                     avg_monthly_return =monthly_return/monthly_freq
                     monthly_returns.append(avg_monthly_return)
                     monthly_return = 0
-                    monthly_freq = 0       
+                    monthly_freq = 0     
                 else:
                     try:
                         avg_monthly_return = monthly_return/monthly_freq
@@ -102,14 +104,14 @@ class IslandGGA():
                     monthly_freq = 0         
             else:
                 if market_position == 'out' :
-                    if row[self.data.columns.get_loc(strategy)] == 1:
+                    if row[data.columns.get_loc(strategy)] == 1:
                         cost_price = row.close
                         market_position = 'in'
                         
                 else:
                     sell_price = row.close
                     trade_return = (sell_price - cost_price)/cost_price
-                    if trade_return <= chromosome_take_profit or trade_return >= chromosome_take_profit: 
+                    if trade_return <= stop_loss or trade_return >= take_profit: 
                         trade_freq +=1
                         monthly_freq+=1
                         if trade_return < max_loss:
@@ -117,22 +119,24 @@ class IslandGGA():
                         monthly_return += trade_return
                         market_position = 'out'   
                         
-                    if row[self.data.columns.get_loc(strategy)] == 0 and trade_return >= chromosome_take_profit :
+                    if row[data.columns.get_loc(strategy)] == 0 and trade_return >= take_profit :
                         trade_freq +=1
                         monthly_freq+=1
                         if trade_return < max_loss:
                             max_loss = trade_return
                         monthly_return += trade_return
                         market_position = 'out'
-        
         return monthly_returns
+
+
+##################
+
 
     def strategy_performance(self,sltp_part):
         chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp(sltp_part)
         strategy_performance = {}
         for strategy in self.strategies:
-            strategy_performance[strategy] = self.generate_trading_signal(strategy,chromomosome_stop_loss,chromomosome_take_profit)
-            
+            strategy_performance[strategy] = self.generate_trading_signal(strategy,chromomosome_stop_loss,chromomosome_take_profit)  
         strategy_performance = pd.DataFrame.from_dict(strategy_performance)
         return strategy_performance
 
@@ -149,6 +153,7 @@ class IslandGGA():
         for row in self.data.itertuples(index=False):    
             #close all trade positions at month end. 
             last_date = self.get_last_date_of_month(row.Date.year,row.Date.month)
+            print(last_date)
             if row.Date == last_date :
                 if market_position =='in':
                     sell_price = row.close
@@ -271,7 +276,7 @@ class IslandGGA():
             p4mc[i] = (p4mc[i] - min_value )/ (max_value - min_value)
         return p4mc
 
-    def normalisation(trading_strategies_data):
+    def normalisation(self,trading_strategies_data):
         normalised_ts_data = trading_strategies_data.copy()
         for ts in trading_strategies_data.columns:
             max_value = trading_strategies_data[ts].max()
@@ -478,6 +483,14 @@ class IslandGGA():
     def select_best_chromosomes(self,population,N):
         return [i for i in sorted(population, key=lambda x: x[3])[-N:]]
 
+    def get_global_best(self):
+        best = self.best_individuals[0]
+        print(best)
+        for individual in self.best_individuals:
+            if individual[3] > best[3]:
+                best = individual
+        return best
+
     def worst_chromosomes(self,population,N):
         worst = [i for i in sorted(population, key=lambda x: x[3])[:N]]
         
@@ -506,16 +519,40 @@ class IslandGGA():
         island = children
         q.put(island)   
 
+    def master_fitness_function(self,island,q):
+        """Master slave migration"""
+        for chromosome in island:
+            ts_data = self.strategy_performance(chromosome[0])
+            normalised_ts_data = self.normalisation(ts_data)
+            profit =self.getProfit(normalised_ts_data,chromosome)
+            corr = self.getCorrelation(ts_data,chromosome)
+            gb = self.groupBalance(chromosome)
+            wb = self.weightBalance(chromosome)
+            fitness = profit * corr* np.power(gb,2) * wb
+            chromosome[3] = fitness 
+        q.put(island)
+
+    def make_islands(self,population):
+        """split list of  into islands for master island migration. thanks chatGPT"""
+        # calculate the length of the list
+        list_len = len(population)
+        # calculate the size of each chunk
+        chunk_size = list_len // self.num_islands
+        # use slicing to split the list into chunks
+        for i in range(0, list_len, chunk_size):
+            yield population[i:i + chunk_size]
+
+
     def evolve_island_ring(self):
         """Ring Topology implementation"""
         #intiate population
-        for i in range(self.num_island):
+        for i in range(self.num_islands):
             self.islands.append(self.init_population())
         #evolve
         for iteration in range(self.num_iter):
             processes = []
             result_queues = []
-            for j in range(self.num_island):
+            for j in range(self.num_islands):
                 result_queue = mp.Queue()
                 process = mp.Process(target=self.genetic_operations, args=(self.islands[j],result_queue))
                 process.start()
@@ -523,16 +560,16 @@ class IslandGGA():
                 result_queues.append(result_queue)
             for process in processes:
                 process.join()
-            for j in range(self.num_island):
+            for j in range(self.num_islands):
                 self.islands[j] = result_queues[j].get()
         #migration 
             if iteration % self.m_iter ==0:
-                for j in range(self.num_island):
+                for j in range(self.num_islands):
                     processes = []
                     result_queues = []
                     self.islands[j]=self.worst_chromosomes(self.islands[j],self.N)
                     receive_individuals = []
-                    for k in range(self.num_island):
+                    for k in range(self.num_islands):
                         if k != j:
                             result_queue = mp.Queue()
                             process = mp.Process(target=self.best_chromosomes, args=(self.islands[k],self.N,result_queue))
@@ -550,7 +587,7 @@ class IslandGGA():
     
         processes = []
         result_queues = []
-        for i in range(self.num_island):
+        for i in range(self.num_islands):
             result_queue =mp.Queue()
             process =mp.Process(target=self.best_chromosomes, args=(self.islands[i],1,result_queue))
             process.start()
@@ -559,18 +596,29 @@ class IslandGGA():
         for process in processes:
             process.join()
         for process in result_queues:
-            self.best_individuals.append(process.get())
-        self.globalBest = self.select_best_chromosomes(self.best_individuals,1)
+            self.best_individuals.append(process.get()[0])
+        self.globalBest = self.get_global_best()
 
     def evolve_master_slave(self):
         """Master slave impelementation"""
         population = self.init_population()
         self.globalBest = population[0]
         for j in range(self.num_iter):
-            pool =mp.Pool(processes=self.num_islands)
-            results =  [pool.apply(self.fitness_function, args=(i)) for i in population]
-            pool.close()
-            pool.join()
+            processes = []
+            result_queues = []
+            results = []
+            islands = list(self.make_islands(population))
+            for i in range(len(islands)):
+                result_queue =mp.Queue()
+                process =mp.Process(target=self.master_fitness_function, args=(islands[i],result_queue))
+                process.start()
+                processes.append(process)
+                result_queues.append(result_queue)
+            for process in processes:
+                process.join()  
+            for process in result_queues:
+                results.append(process.get()[0])
+
             tempPopu  = self.selection(results)
             children = []
             #Crossover
@@ -605,7 +653,7 @@ class IslandGGA():
         return lowest, score
 
 
-    def multikuti_migration(self,population,immigrants,N):
+    def multikuti_migration(self,population,immigrants,N,q):
         best = self.select_best_chromosomes(population,N) # pool to select the most different chromosomes from. 
         accepted_immigrants = immigrants # selected chromosomes which are most different chromosomes. 
         lowest_immigrant,dist_score = self.lowest(accepted_immigrants,best)
@@ -621,18 +669,18 @@ class IslandGGA():
                     else:
                         dist_score = dist
                         lowest_immigrant = immigrants[i]
-        return accepted_immigrants
+        q.put(accepted_immigrants)
 
     def evolve_island_multikuti(self):
         """Multikuti  implementation"""
         #intiate population
-        for i in range(self.num_island):
+        for i in range(self.num_islands):
             self.islands.append(self.init_population())
         #evolve
         for iteration in range(self.num_iter):
             processes = []
             result_queues = []
-            for j in range(self.num_island):
+            for j in range(self.num_islands):
                 result_queue = mp.Queue()
                 process = mp.Process(target=self.genetic_operations, args=(self.islands[j],result_queue))
                 process.start()
@@ -640,16 +688,16 @@ class IslandGGA():
                 result_queues.append(result_queue)
             for process in processes:
                 process.join()
-            for j in range(self.num_island):
+            for j in range(self.num_islands):
                 self.islands[j] = result_queues[j].get()
         #migration 
             if iteration % self.m_iter ==0:
-                for j in range(self.num_island):
+                for j in range(self.num_islands):
                     processes = []
                     result_queues = []
                     self.islands[j]=self.worst_chromosomes(self.islands[j],self.N)
                     receive_individuals = []
-                    for k in range(self.num_island):
+                    for k in range(self.num_islands):
                         if k != j:
                             immigrants = self.select_best_chromosomes(self.islands[k],self.N)
                             result_queue = mp.Queue()
@@ -668,7 +716,7 @@ class IslandGGA():
     
         processes = []
         result_queues = []
-        for i in range(self.num_island):
+        for i in range(self.num_islands):
             result_queue =mp.Queue()
             process =mp.Process(target=self.best_chromosomes, args=(self.islands[i],1,result_queue))
             process.start()
@@ -677,7 +725,7 @@ class IslandGGA():
         for process in processes:
             process.join()
         for process in result_queues:
-            self.best_individuals.append(process.get())
-        self.globalBest = self.select_best_chromosomes(self.best_individuals,1)
+            self.best_individuals.append(process.get()[0])
+        self.globalBest = self.get_global_best()
 
     
