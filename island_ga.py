@@ -34,6 +34,11 @@ class IslandGGA():
         self.globalBest  = []
         self.fitness_values = []
 
+    def re_init(self):
+        self.best_individuals = []
+        self.globalBest  = []
+        self.fitness_values = []
+
         
     def get_last_date_of_month(self,year, month):
         """Return the last date of the month.
@@ -485,7 +490,6 @@ class IslandGGA():
 
     def get_global_best(self):
         best = self.best_individuals[0]
-        print(best)
         for individual in self.best_individuals:
             if individual[3] > best[3]:
                 best = individual
@@ -545,6 +549,7 @@ class IslandGGA():
 
     def evolve_island_ring(self):
         """Ring Topology implementation"""
+        self.re_init()
         #intiate population
         for i in range(self.num_islands):
             self.islands.append(self.init_population())
@@ -601,6 +606,8 @@ class IslandGGA():
 
     def evolve_master_slave(self):
         """Master slave impelementation"""
+        # Reinitiate evolution values
+        self.re_init()
         population = self.init_population()
         self.globalBest = population[0]
         for j in range(self.num_iter):
@@ -673,6 +680,8 @@ class IslandGGA():
 
     def evolve_island_multikuti(self):
         """Multikuti  implementation"""
+        # Reinitiate evolution values
+        self.re_init()
         #intiate population
         for i in range(self.num_islands):
             self.islands.append(self.init_population())
