@@ -31,6 +31,7 @@ class IslandGGA():
         self.islands = []
         self.best_individuals = []
         self.globalBest  = []
+        self.fitness_values = []
 
         
     def get_last_date_of_month(self,year, month):
@@ -505,14 +506,12 @@ class IslandGGA():
         island = children
         q.put(island)   
 
-    def evolve(self):
+    def evolve_island_ring(self):
+        """Ring Topology implementation"""
         #intiate population
-        islands = []
         for i in range(self.num_island):
             self.islands.append(self.init_population())
-        print("init")
         #evolve
-        
         for iteration in range(self.num_iter):
             processes = []
             result_queues = []
@@ -562,4 +561,123 @@ class IslandGGA():
         for process in result_queues:
             self.best_individuals.append(process.get())
         self.globalBest = self.select_best_chromosomes(self.best_individuals,1)
-        
+
+    def evolve_master_slave(self):
+        """Master slave impelementation"""
+        population = self.init_population()
+        self.globalBest = population[0]
+        for j in range(self.num_iter):
+            pool =mp.Pool(processes=self.num_islands)
+            results =  [pool.apply(self.fitness_function, args=(i)) for i in population]
+            pool.close()
+            pool.join()
+            tempPopu  = self.selection(results)
+            children = []
+            #Crossover
+            for i in range(0, len(tempPopu)-1, 2):
+                    # get selected parents in pairs
+                    parent1,parent2 = tempPopu[i],tempPopu[i+1]
+                    #crossover and mutation and inversion 
+                    child1,child2 = self.crossover(parent1,parent2)
+                    child1 = self.mutation(child1)
+                    child2 = self.mutation(child2)
+                    child1 = self.inversion(child1)
+                    child2 = self.inversion(child2)
+                    children.append(child1)
+                    children.append(child2)
+            population = children
+            for chromosone in population:
+                    if chromosone[3] > self.globalBest[3]:
+                        self.globalBest = chromosone
+
+
+    ###########
+    def lowest(self,accepted_pool,best):
+        """lowest chromosome to replace"""
+        lowest = accepted_pool[0]
+        score = self.hamming_distance(lowest,best[0])
+        for i in range(len(accepted_pool)):
+            for j in range(len(best)):
+                dist = self.hamming_distance(accepted_pool[i],best[j])
+                if dist < score:
+                    lowest=accepted_pool[i]
+                    score = dist
+        return lowest, score
+
+
+    def multikuti_migration(self,population,immigrants,N):
+        best = self.select_best_chromosomes(population,N) # pool to select the most different chromosomes from. 
+        accepted_immigrants = immigrants # selected chromosomes which are most different chromosomes. 
+        lowest_immigrant,dist_score = self.lowest(accepted_immigrants,best)
+        for i in range(len(immigrants)):
+            for j in range(i, len(best)):
+                dist = self.hamming_distance(immigrants[i], best[j])
+                if dist > dist_score:
+                    if immigrants[i] not in accepted_immigrants:
+                        accepted_immigrants.remove(lowest_immigrant)
+                        accepted_immigrants.append(immigrants[i])
+                        dist_score = dist
+                        lowest_immigrant = immigrants[i]
+                    else:
+                        dist_score = dist
+                        lowest_immigrant = immigrants[i]
+        return accepted_immigrants
+
+    def evolve_island_multikuti(self):
+        """Multikuti  implementation"""
+        #intiate population
+        for i in range(self.num_island):
+            self.islands.append(self.init_population())
+        #evolve
+        for iteration in range(self.num_iter):
+            processes = []
+            result_queues = []
+            for j in range(self.num_island):
+                result_queue = mp.Queue()
+                process = mp.Process(target=self.genetic_operations, args=(self.islands[j],result_queue))
+                process.start()
+                processes.append(process)
+                result_queues.append(result_queue)
+            for process in processes:
+                process.join()
+            for j in range(self.num_island):
+                self.islands[j] = result_queues[j].get()
+        #migration 
+            if iteration % self.m_iter ==0:
+                for j in range(self.num_island):
+                    processes = []
+                    result_queues = []
+                    self.islands[j]=self.worst_chromosomes(self.islands[j],self.N)
+                    receive_individuals = []
+                    for k in range(self.num_island):
+                        if k != j:
+                            immigrants = self.select_best_chromosomes(self.islands[k],self.N)
+                            result_queue = mp.Queue()
+                            process = mp.Process(target=self.multikuti_migration, args=(self.islands[j],immigrants,self.N,result_queue))
+                            process.start()
+                            processes.append(process)
+                            result_queues.append(result_queue)
+                    for process in processes:
+                        process.join()
+                    for result in result_queues:
+                        receive_individuals.extend(result.get())
+                    for individual in receive_individuals:
+                        self.islands[j].append(individual)
+
+        # Return the best individual from each island
+    
+        processes = []
+        result_queues = []
+        for i in range(self.num_island):
+            result_queue =mp.Queue()
+            process =mp.Process(target=self.best_chromosomes, args=(self.islands[i],1,result_queue))
+            process.start()
+            processes.append(process)
+            result_queues.append(result_queue)
+        for process in processes:
+            process.join()
+        for process in result_queues:
+            self.best_individuals.append(process.get())
+        self.globalBest = self.select_best_chromosomes(self.best_individuals,1)
+
+    
