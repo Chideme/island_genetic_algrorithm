@@ -35,6 +35,7 @@ class IslandGGA():
         self.fitness_values = []
 
     def re_init(self):
+        self.islands = []
         self.best_individuals = []
         self.globalBest  = []
         self.fitness_values = []
@@ -75,8 +76,7 @@ class IslandGGA():
         return sl,tp
 #################
 
-    def generate_trading_signal(self,strategy,stop_loss,take_profit):
-        data = self.data
+    def generate_trading_signal(self,data,strategy,stop_loss,take_profit):
         monthly_returns = []
         monthly_return = 0
         trade_freq = 0
@@ -138,10 +138,11 @@ class IslandGGA():
 
 
     def strategy_performance(self,sltp_part):
+        data = self.data
         chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp(sltp_part)
         strategy_performance = {}
         for strategy in self.strategies:
-            strategy_performance[strategy] = self.generate_trading_signal(strategy,chromomosome_stop_loss,chromomosome_take_profit)  
+            strategy_performance[strategy] = self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)  
         strategy_performance = pd.DataFrame.from_dict(strategy_performance)
         return strategy_performance
 
@@ -382,12 +383,12 @@ class IslandGGA():
 
     def fitness_function(self,chromosome):
         ts_data = self.strategy_performance(chromosome[0])
-        normalised_ts_data = self.normalisation(ts_data)
+        normalised_ts_data = ts_data
         profit =self.getProfit(normalised_ts_data,chromosome)
         corr = self.getCorrelation(ts_data,chromosome)
         gb = self.groupBalance(chromosome)
         wb = self.weightBalance(chromosome)
-        fitness = profit * corr* np.power(gb,2) * wb
+        fitness = profit * (1/corr) * np.power(gb,2) * wb
         chromosome[3] = fitness 
         return chromosome
 
@@ -736,5 +737,35 @@ class IslandGGA():
         for process in result_queues:
             self.best_individuals.append(process.get()[0])
         self.globalBest = self.get_global_best()
+
+        
+    ########## Evaluation functions #################
+
+    
+    def evaluate_performance(self,data,sltp_part):
+        chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp(sltp_part)
+        strategy_performance = {}
+        for strategy in self.strategies:
+            strategy_performance[strategy] = self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)  
+        strategy_performance = pd.DataFrame.from_dict(strategy_performance)
+        return strategy_performance
+    
+    def evaluate_best_profit(self,data):
+        chromosome = self.globalBest
+        p4mc = self.evaluate_performance(data,chromosome[0])
+        weights = self.getWeights(chromosome[2])
+        w = chromosome[2]
+        L = sum([i for i in w if i == 1])
+        for i in weights:
+            try:
+                weights[i]= round(len(weights[i])/L,2)
+            except ZeroDivisionError:
+                weights[i] = 0
+        total = 0
+        for i in range(len(chromosome[1])):
+            for j in chromosome[1][i]:
+                avg_return = p4mc[j].mean()
+                total += avg_return*weights[i+1]*self.allocated_capital
+        return total
 
     
