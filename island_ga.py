@@ -235,7 +235,8 @@ class IslandGGA():
         """Generate Group and assign TS to groups K"""
         x = self.strategies.copy()
         random.shuffle(x)
-        groups = np.array_split(x,self.K)
+        groups =np.array_split(x,self.K)
+        groups = [group.tolist() for group in groups]
         return groups
 
     def generateWeight(self):
@@ -334,7 +335,6 @@ class IslandGGA():
         combs = list(itertools.product(*chromosome[1]))
         for ts in  combs:
             tsp = ts_data[list(ts)].corr()
-            print(tsp)
             tsp_var = np.linalg.multi_dot([weights_df.to_numpy(),tsp.to_numpy(),weights_df.to_numpy().T])
             total += tsp_var
         try:
