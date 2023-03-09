@@ -230,16 +230,12 @@ class IslandGGA():
         
         return sltp
 
-
+    
     def generateGroup(self):
         """Generate Group and assign TS to groups K"""
         x = self.strategies.copy()
         random.shuffle(x)
-        groups = [[] for k in range(self.K)]
-        while x:
-            s = x.pop()
-            random_index = random.randrange(self.K)
-            groups[random_index].append(s)
+        groups = np.array_split(x,self.K)
         return groups
 
     def generateWeight(self):
@@ -301,9 +297,7 @@ class IslandGGA():
                     if x == 0:
                         break
                     else:
-
                         z[i].append(x)
-        
         return z
         
 
@@ -340,6 +334,7 @@ class IslandGGA():
         combs = list(itertools.product(*chromosome[1]))
         for ts in  combs:
             tsp = ts_data[list(ts)].corr()
+            print(tsp)
             tsp_var = np.linalg.multi_dot([weights_df.to_numpy(),tsp.to_numpy(),weights_df.to_numpy().T])
             total += tsp_var
         try:
@@ -388,7 +383,10 @@ class IslandGGA():
         corr = self.getCorrelation(ts_data,chromosome)
         gb = self.groupBalance(chromosome)
         wb = self.weightBalance(chromosome)
-        fitness = profit * (1/corr) * np.power(gb,2) * wb
+        try:
+            fitness = profit * (1/corr) * np.power(gb,2) * wb
+        except ZeroDivisionError:
+            fitness = profit  * np.power(gb,2) * wb
         chromosome[3] = fitness 
         return chromosome
 
