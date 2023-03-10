@@ -378,7 +378,7 @@ class IslandGGA():
 
     def fitness_function(self,chromosome):
         ts_data = self.strategy_performance(chromosome[0])
-        normalised_ts_data = ts_data
+        normalised_ts_data = self.normalisation(ts_data)
         profit =self.getProfit(normalised_ts_data,chromosome)
         corr = self.getCorrelation(ts_data,chromosome)
         gb = self.groupBalance(chromosome)
@@ -387,7 +387,8 @@ class IslandGGA():
             fitness = profit * (1/corr) * np.power(gb,2) * wb
         except ZeroDivisionError:
             fitness = profit  * np.power(gb,2) * wb
-        chromosome[3] = fitness 
+        chromosome[3] = fitness
+        
         return chromosome
 
    
