@@ -39,7 +39,7 @@ class IslandGGA():
         self.islands = []
         self.best_individuals = []
         self.globalBest  = []
-        self.fitness_values = []
+        self.convergence_values = []
 
     def init_population(self):
         population =[]
