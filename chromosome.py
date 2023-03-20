@@ -135,7 +135,7 @@ class Chromosome():
                 weights[i] = 0
         if all(value == 0 for value in weights.values()):
             for i in weights:
-                percent = round(100/(self.K+1),2)
+                percent = round(1/(self.K+1),2)
                 weights[i] = percent
 
         total = 0
@@ -160,7 +160,7 @@ class Chromosome():
 
         if all(value == 0 for value in weights.values()):
             for i in weights:
-                percent = round(100/(self.K+1),2)
+                percent = round(1/(self.K+1),2)
                 weights[i] = percent
         weights_df = pd.DataFrame([weights])
         weights_df = weights_df.drop(0,axis=1)

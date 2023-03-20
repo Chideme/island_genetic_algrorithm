@@ -148,7 +148,7 @@ class IslandGGA():
         q.put(island)
 
     def make_islands(self,population):
-        """split list of  into islands for master island migration. thanks chatGPT"""
+        """split list of  into islands for  island migration. thanks ChatGPT ：）"""
         # calculate the length of the list
         list_len = len(population)
         # calculate the size of each chunk
@@ -162,8 +162,8 @@ class IslandGGA():
         """Ring Topology implementation"""
         self.re_init()
         #intiate population
-        for i in range(self.num_islands):
-            self.islands.append(self.init_population())
+        population = self.init_population()
+        self.islands = list(self.make_islands(population))
         #evolve
         for iteration in range(self.num_iter):
             processes = []
@@ -229,10 +229,10 @@ class IslandGGA():
             processes = []
             result_queues = []
             results = []
-            islands = list(self.make_islands(population))
-            for i in range(len(islands)):
+            self.islands = list(self.make_islands(population))
+            for i in range(len(self.islands)):
                 result_queue =mp.Queue()
-                process =mp.Process(target=self.master_fitness_function, args=(islands[i],result_queue))
+                process =mp.Process(target=self.master_fitness_function, args=(self.islands[i],result_queue))
                 process.start()
                 processes.append(process)
                 result_queues.append(result_queue)
@@ -259,9 +259,35 @@ class IslandGGA():
             for chromosone in population:
                     if chromosone.fitness_value > self.globalBest.fitness_value:
                         self.globalBest = chromosone
-            self.fitness_values.append(self.globalBest)
+            self.convergence_values.append(self.globalBest)
                         
-
+    def evolve_gga(self):
+        """GGA impelementation"""
+        # Reinitiate evolution values
+        self.re_init()
+        population = self.init_population()
+        self.globalBest = population[0]
+        for j in range(self.num_iter):
+            population = self.update_pop_fitness_values(population)
+            tempPopu  = self.selection(population)
+            children = []
+            #Crossover
+            for i in range(0, len(tempPopu)-1, 2):
+                # get selected parents in pairs
+                parent1,parent2 = tempPopu[i],tempPopu[i+1]
+                #crossover and mutation and inversion 
+                child1,child2 = parent1.crossover(parent2,self.r_cross)
+                child1.mutation(self.r_mut)
+                child2.mutation(self.r_mut)
+                child1.inversion(self.r_inv)
+                child2.inversion(self.r_inv)
+                children.append(child1)
+                children.append(child2)
+            population = children
+            for chromosone in population:
+                    if chromosone.fitness_value > self.globalBest.fitness_value:
+                        self.globalBest = chromosone
+            self.convergence_values.append(self.globalBest)
 
     ###########
     def lowest(self,accepted_pool,best):
@@ -300,8 +326,8 @@ class IslandGGA():
         # Reinitiate evolution values
         self.re_init()
         #intiate population
-        for i in range(self.num_islands):
-            self.islands.append(self.init_population())
+        population = self.init_population()
+        self.islands = list(self.make_islands(population))
         #evolve
         for iteration in range(self.num_iter):
             processes = []
