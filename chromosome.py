@@ -39,6 +39,10 @@ class Chromosome():
         self.stop_loss = stop_loss
         self.take_profit = take_profit
         self.fitness_value = 1
+        self.wb=0
+        self.profit=0
+        self.corr=0
+        self.gb=0
         self.sltp_part = []
         self.group_part = []
         self.weight_part = []
@@ -296,14 +300,15 @@ class Chromosome():
         ts_data = self.strategy_performance(data)
         normalised_ts_data = self.normalisation(ts_data)
         profit =self.getProfit(normalised_ts_data,allocated_capital)
-        corr = self.getCorrelation(ts_data)
+        corr = self.getCorrelation(normalised_ts_data)
         gb = self.groupBalance()
         wb = self.weightBalance()
-    
         try:
             fitness = profit * (1/corr) * np.power(gb,2) * wb
+            self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         except ZeroDivisionError:
             fitness = profit  * np.power(gb,2) * wb
+            self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         self.fitness_value = fitness
         
 
