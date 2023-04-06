@@ -108,36 +108,28 @@ class IslandGGA():
     def update_pop_fitness_values(self,island):
         for chromosome in island:
             chromosome.calculate_chromosome_fitness(self.data,self.allocated_capital)
-        #chromosome = Chromosome(self.K,self.n,self.b,self.strategies,self.num_weight,self.stop_loss,self.take_profit)
-        #chromosome.create_chromosome()
-        #chromosome.calculate_chromosome_fitness(self.data,self.allocated_capital)
-        #island.append(chromosome.create_chromosome())
         return island
 
     def genetic_operations(self,population):
         """evolve each island per generation"""
         #population = self.update_pop_fitness_values(population)
-        n = len(population)
-        elit_size = math.ceil(self.r_elite * n)
         tempPopu  = self.selection(population)
-        elite_pop = self.select_best_chromosomes(tempPopu,elit_size)
+        #elite_pop = self.select_best_chromosomes(tempPopu,elit_size)
         children = []
         #Crossover
-        for _ in range(n - elit_size):
-                # get selected parents in pairs
-                parent1,parent2 = random.choices(elite_pop, k=2)
-                #crossover and mutation and inversion 
-                child1,child2 = parent1.crossover(parent2,self.r_cross)
-                child1.mutation(self.r_mut)
-                child2.mutation(self.r_mut)
-                child1.inversion(self.r_inv)
-                child2.inversion(self.r_inv)
-                children.append(child1)
-                children.append(child2)
-        for i in children:
-            elite_pop.append(i)
-        population = elite_pop
-        return population
+        for i in range(0, len(tempPopu)-1, 2):
+            # get selected parents in pairs
+            parent1,parent2 = tempPopu[i],tempPopu[i+1]
+            #crossover and mutation and inversion 
+            child1,child2 = parent1.crossover(parent2,self.r_cross)
+            child1.mutation(self.r_mut)
+            child2.mutation(self.r_mut)
+            child1.inversion(self.r_inv)
+            child2.inversion(self.r_inv)
+            children.append(child1)
+            children.append(child2)
+
+        return children
     
     
 
@@ -161,6 +153,7 @@ class IslandGGA():
         # use slicing to split the list into chunks
         for i in range(0, list_len, chunk_size):
             yield population[i:i + chunk_size]
+            
     ########### multikuti helper functions
     def lowest(self,accepted_pool,best):
         """lowest chromosome to replace"""

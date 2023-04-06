@@ -46,6 +46,7 @@ class Chromosome():
         self.sltp_part = []
         self.group_part = []
         self.weight_part = []
+        self.weights=[]
 
     def __str__(self):
         return f"SLTP: {self.sltp_part}\nGROUP: {self.group_part}\nWEIGHT: {self.weight_part}\nFITNESS: {  self.fitness_value}"
@@ -70,10 +71,11 @@ class Chromosome():
     def generateWeight(self):
         """Generate Weight Part and assign to groups K"""
         weights= [1 for _ in range(self.num_weight)]
-        K = self.K+1
+        K = self.K
         for i in range(K):
             random_index = random.randrange(K)
             weights[random_index] = 0
+        
         self.weight_part = weights
         
     
@@ -115,38 +117,36 @@ class Chromosome():
         return normalised_ts_data
 
     def getWeights(self):
-        w = self.weight_part.copy()
-        L = sum([i for i in w if i == 1])
+        weights = self.weight_part.copy()
         K = self.K+1
-        z = {k: [] for k in range(K)}
+        group_weight = {k: [] for k in range(K)}
         for i in range(K):
-            while w:
-                    x = w.pop(0)
+            while weights:
+                    x = weights.pop(0)
                     if x == 0:
                         break
                     else:
-                        z[i].append(x)
-        return z
+                        group_weight[i].append(x)
+        total_1s = sum([i for i in weights if i == 1])
+        for i in group_weight:
+            try:
+                group_weight[i]= round(len(group_weight[i])/total_1s,2)
+            except ZeroDivisionError:
+                group_weight[i] = 0
+        if all(value == 0 for value in group_weight.values()) or group_weight[0] == 1 :
+            for i in group_weight:
+                percent = round(1/(self.K+1),2)
+                group_weight[i] = percent
+        return group_weight
         
 
     def getProfit(self,ts_data,allocated_capital):
         weights = self.getWeights()
-        L = sum([i for i in self.weight_part if i == 1])
-        for i in weights:
-            try:
-                weights[i]= round(len(weights[i])/L,2)
-            except ZeroDivisionError:
-                weights[i] = 0
-        if all(value == 0 for value in weights.values()):
-            for i in weights:
-                percent = round(1/(self.K+1),2)
-                weights[i] = percent
-
+        self.weights = weights
         total = 0
         for i in range(len(self.group_part)):
             for j in self.group_part[i]:
                 avg_return = ts_data[j].mean()
-    
                 total += avg_return*weights[i+1]*allocated_capital
         return total
 
@@ -154,18 +154,7 @@ class Chromosome():
         
     def getCorrelation(self,ts_data):
         weights = self.getWeights()
-        w = self.weight_part
-        L = sum([i for i in w if i == 1])
-        for i in weights:
-            try:
-                weights[i]= round(len(weights[i])/L,2)
-            except ZeroDivisionError:
-                weights[i] = 0
-
-        if all(value == 0 for value in weights.values()):
-            for i in weights:
-                percent = round(1/(self.K+1),2)
-                weights[i] = percent
+        self.weights = weights
         weights_df = pd.DataFrame([weights])
         weights_df = weights_df.drop(0,axis=1)
         total = 0
@@ -198,9 +187,18 @@ class Chromosome():
         return gb
 
     def weightBalance(self):
+        weight_part = self.weight_part.copy()
         gb = 0
         TL = sum([i for i in self.weight_part if i == 1])
-        weights = self.getWeights()
+        K = self.K+1
+        weights = {k: [] for k in range(K)}
+        for i in range(K):
+            while weight_part:
+                    x = weight_part.pop(0)
+                    if x == 0:
+                        break
+                    else:
+                        weights[i].append(x)
         
         for i in weights:
             try:
@@ -300,17 +298,18 @@ class Chromosome():
         ts_data = self.strategy_performance(data)
         normalised_ts_data = self.normalisation(ts_data)
         profit =self.getProfit(normalised_ts_data,allocated_capital)
-        corr = self.getCorrelation(normalised_ts_data)
+        corr = self.getCorrelation(ts_data)
         gb = self.groupBalance()
         wb = self.weightBalance()
         try:
-            fitness = profit * (1/corr) * np.power(gb,2) * wb
+            fitness = profit * (1/corr) #* np.power(gb,2) * wb
             self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         except ZeroDivisionError:
             fitness = profit  * np.power(gb,2) * wb
             self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         self.fitness_value = fitness
-        
+
+            
 
     #####mdd values
     # generate maxdraw down
@@ -411,36 +410,38 @@ class Chromosome():
             # select crossover point that is not on the end of the string
             index = random.randint(1, len(self.sltp_part)-2)
             # perform crossover on SLTP
-            child1.sltp_part = parent2.sltp_part[:index] + self.sltp_part[index:]
-            child2.sltp_part =self.sltp_part[:index] + parent2.sltp_part[index:]
+            child1.sltp_part = self.sltp_part[index:]+ parent2.sltp_part[:index] 
+            child2.sltp_part = parent2.sltp_part[index:] + self.sltp_part[:index] 
             # perform crossover on weight
-            index = random.randint(1, len(self.weight_part)-2)
-            child1.weight_part = parent2.weight_part[:index] + self.weight_part[index:]
+            child1.weight_part = self.weight_part[index:] + parent2.weight_part[:index] 
             if child1.weight_part.count(0) != self.K+1:
-                child1.weight_part = self.weight_part
-            child2.weight_part = self.weight_part[:index] + parent2.weight_part[index:]
+                child1.generateWeight()
+            child2.weight_part = parent2.weight_part[index:] + self.weight_part[:index] 
             if child2.weight_part.count(0) != self.K+1:
-                child2.weight_part = self.weight_part
+                child2.generateWeight()
 
         return child1,child2
     ###Mutation
 
     def mutation(self,r_mut):
         # check for a mutation
-        if random.random() < r_mut:
+        
             # on SLTP
-            for i in range(len(self.sltp_part)):
-                # flip the bit
+        for i in range(len(self.sltp_part)):
+            if random.random() < r_mut:
+            # flip the bit
                 self.sltp_part[i] = 1 - self.sltp_part[i]
-            # on Weight Part
-            for i in range(len(self.weight_part)):
-                # flip the bit 
+        # on Weight Part
+        for i in range(len(self.weight_part)):
+            if random.random() < r_mut:
+            # flip the bit 
                 self.weight_part[i] = 1 - self.weight_part[i] 
-                #check if condition is still maintained
+            #check if condition is still maintained
                 if self.weight_part.count(0) != self.K+1:
-                    self.weight_part[i] = 1 - self.weight_part[i] 
+                    self.generateWeight() 
 
-            # on TS part
+        # on TS part
+        if random.random() < r_mut:
             grp_idx1 = random.randrange(len(self.group_part))
             grp_idx2 = random.randrange(len(self.group_part))
             ts_idx = random.randrange(len(self.group_part[grp_idx1]))
