@@ -299,13 +299,13 @@ class Chromosome():
         normalised_ts_data = self.normalisation(ts_data)
         profit =self.getProfit(normalised_ts_data,allocated_capital)
         corr = self.getCorrelation(ts_data)
-        gb = self.groupBalance()
-        wb = self.weightBalance()
+        gb = self.groupBalance() 
+        wb = self.weightBalance() 
         try:
-            fitness = profit * (1/corr) #* np.power(gb,2) * wb
+            fitness = profit * (1/corr) *gb *wb#* np.power(gb,2) * wb
             self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         except ZeroDivisionError:
-            fitness = profit  * np.power(gb,2) * wb
+            fitness = profit *gb *wb #* gb# * np.power(gb,2) * wb
             self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         self.fitness_value = fitness
 

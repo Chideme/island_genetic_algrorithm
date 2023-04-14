@@ -35,12 +35,14 @@ class IslandGGA():
         self.best_individuals = []
         self.globalBest  = []
         self.convergence_values = []
+        self.population = []
 
     def re_init(self):
         self.islands = []
         self.best_individuals = []
         self.globalBest  = []
         self.convergence_values = []
+        self.population = []
 
     def init_population(self):
         population =[]
@@ -86,20 +88,14 @@ class IslandGGA():
 ######## MIGRATION
 
     def best_chromosomes(self,population,N,q):
-        q.put([i for i in sorted(population, key=lambda x: x.fitness_value)[-N:]])
+        q.put([i for i in sorted(population, key=lambda x: x.fitness_value,reverse=True)[:N]])
 
     def select_best_chromosomes(self,population,N):
-        return [i for i in sorted(population, key=lambda x: x.fitness_value)[-N:]]
+        return [i for i in sorted(population, key=lambda x: x.fitness_value,reverse=True)[:N]]
 
-    def get_global_best(self):
-        best = self.best_individuals[0]
-        for individual in self.best_individuals:
-            if individual.fitness_value > best.fitness_value:
-                best = individual
-        return best
 
     def worst_chromosomes(self,population,N,q):
-        worst = [i for i in sorted(population, key=lambda x: x.fitness_value)[:N]]
+        worst = [i for i in sorted(population, key=lambda x: x.fitness_value,reverse=False)[:N]]
         
         for i in worst:
             population.remove(i)
@@ -112,6 +108,7 @@ class IslandGGA():
 
     def genetic_operations(self,population):
         """evolve each island per generation"""
+        print("this function")
         #population = self.update_pop_fitness_values(population)
         tempPopu  = self.selection(population)
         #elite_pop = self.select_best_chromosomes(tempPopu,elit_size)
@@ -141,7 +138,7 @@ class IslandGGA():
 
     def master_fitness_function(self,island,q):
         """Master slave migration"""
-        island = self.update_pop_fitness_values(island)
+        self.update_pop_fitness_values(island)
         q.put(island)
 
     def make_islands(self,population):
@@ -153,6 +150,26 @@ class IslandGGA():
         # use slicing to split the list into chunks
         for i in range(0, list_len, chunk_size):
             yield population[i:i + chunk_size]
+
+    def get_global_best(self):
+        processes = []
+        result_queues = []
+        for i in range(self.num_islands):
+            result_queue =mp.Queue()
+            process =mp.Process(target=self.best_chromosomes, args=(self.islands[i],1,result_queue))
+            process.start()
+            processes.append(process)
+            result_queues.append(result_queue)
+        for process in processes:
+            process.join()
+        for result in result_queues:
+            self.best_individuals.append(result.get()[0])
+
+        best = self.best_individuals[0]
+        for individual in self.best_individuals:
+            if individual.fitness_value > best.fitness_value:
+                best = individual
+        self.globalBest = best
             
     ########### multikuti helper functions
     def lowest(self,accepted_pool,best):
@@ -198,7 +215,7 @@ class IslandGGA():
         for iteration in range(self.num_iter):
             processes = []
             result_queues = []
-            for j in range(self.num_islands):
+            for j in range(len(self.islands)):
                 result_queue = mp.Queue()
                 process = mp.Process(target=self.parallel_genetic_operations, args=(self.islands[j],result_queue))
                 process.start()
@@ -208,6 +225,7 @@ class IslandGGA():
                 process.join()
             for j in range(self.num_islands):
                 self.islands[j] = result_queues[j].get()
+                
         #migration 
             if iteration % self.m_iter ==0:
                 # delete worst chromosomes
@@ -223,6 +241,7 @@ class IslandGGA():
                     process.join()
                 for i in range(self.num_islands):
                     self.islands[i]=result_queues[i].get()
+                    
                  ## Get best chromosome   
                 for j in range(self.num_islands):
                     processes = []
@@ -236,28 +255,21 @@ class IslandGGA():
                             process.start()
                             processes.append(process)
                             result_queues.append(result_queue)
+                            break
                     for process in processes:
                         process.join()
                     for result in result_queues:
                         receive_individuals.extend(result.get())
                     for individual in receive_individuals:
                         self.islands[j].append(individual)
+            self.population =   []
+            for i in range(len(self.islands)):
+                self.population.extend(self.islands[i])
             # add average fitness value to fitness  values to find convergence values
             self.get_convergence()
         # Return the best individual from each island
-        processes = []
-        result_queues = []
-        for i in range(self.num_islands):
-            result_queue =mp.Queue()
-            process =mp.Process(target=self.best_chromosomes, args=(self.islands[i],1,result_queue))
-            process.start()
-            processes.append(process)
-            result_queues.append(result_queue)
-        for process in processes:
-            process.join()
-        for process in result_queues:
-            self.best_individuals.append(process.get()[0])
-        self.globalBest = self.get_global_best()
+        self.get_global_best()
+        
     
 
     def evolve_master_slave(self):
@@ -269,8 +281,9 @@ class IslandGGA():
         for j in range(self.num_iter):
             processes = []
             result_queues = []
-            results = []
+            children = []
             self.islands = list(self.make_islands(population))
+        
             for i in range(len(self.islands)):
                 result_queue =mp.Queue()
                 process =mp.Process(target=self.master_fitness_function, args=(self.islands[i],result_queue))
@@ -279,14 +292,16 @@ class IslandGGA():
                 result_queues.append(result_queue)
             for process in processes:
                 process.join()  
-            for process in result_queues:
-                results.append(process.get()[0])
-            population = self.genetic_operations(results)
+            for result in result_queues:
+                children.extend(result.get())
+            population = self.genetic_operations(children)
             for chromosone in population:
                     if chromosone.fitness_value > self.globalBest.fitness_value:
                         self.globalBest = chromosone
             # Calculate average fitness value for convergence
+
             average_fitness = sum([chromosome.fitness_value for chromosome in population])/len(population)
+            self.population = population
             self.convergence_values.append(average_fitness)
                         
     def evolve_gga(self):
@@ -303,6 +318,7 @@ class IslandGGA():
                         self.globalBest = chromosone
             # Calculate average fitness value for convergnece
             average_fitness = sum([chromosome.fitness_value for chromosome in population])/len(population)
+            self.population = population
             self.convergence_values.append(average_fitness)
 
     
@@ -357,36 +373,27 @@ class IslandGGA():
                             process.start()
                             processes.append(process)
                             result_queues.append(result_queue)
+                            break
                     for process in processes:
                         process.join()
                     for result in result_queues:
                         receive_individuals.extend(result.get())
                     for individual in receive_individuals:
                         self.islands[j].append(individual)
+            self.population =   []
+            for i in range(len(self.islands)):
+                self.population.extend(self.islands[i])
             self.get_convergence()
 
         # Return the best individual from each island
-    
-        processes = []
-        result_queues = []
-        for i in range(self.num_islands):
-            result_queue =mp.Queue()
-            process =mp.Process(target=self.best_chromosomes, args=(self.islands[i],1,result_queue))
-            process.start()
-            processes.append(process)
-            result_queues.append(result_queue)
-        for process in processes:
-            process.join()
-        for process in result_queues:
-            self.best_individuals.append(process.get()[0])
-        self.globalBest = self.get_global_best()
+        self.get_global_best()
 
 ############# Elite selection Implemenation
 class EliteIslandGGA(IslandGGA):
 
-    def __init__(self, r_elite, *args, **kwargs):
-        self.r_elite = r_elite
-        super().__init__(*args, **kwargs)
+    #def __init__(self, *args, **kwargs):
+        #self.r_elite = r_elite
+        #super().__init__(*args, **kwargs)
 
     def genetic_operations(self,population):
         """uses the elitism approach for selection"""
@@ -402,8 +409,8 @@ class EliteIslandGGA(IslandGGA):
             child1.mutation(self.r_mut)
             child1.inversion(self.r_inv)
             children.append(child1)
-        for i in children:
-            elite_pop.append(i)
+        for child in children:
+            elite_pop.append(child)
         return elite_pop
 
 
