@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import itertools
+import heapq
 import math
 import talib as ta
 import pandas as pd
@@ -302,12 +303,28 @@ class Chromosome():
         gb = self.groupBalance() 
         wb = self.weightBalance() 
         try:
-            fitness = profit * (1/corr) *gb *wb#* np.power(gb,2) * wb
+            fitness = profit * (1/corr) *gb *wb #* np.power(gb,2)
             self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         except ZeroDivisionError:
-            fitness = profit *gb *wb #* gb# * np.power(gb,2) * wb
+            fitness = profit *gb *wb 
             self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
         self.fitness_value = fitness
+    
+    def scale_fitness(self,max_fitness,min_fitness):
+        # Linear scaling
+        #min_fitness = min(population_fitness)
+        #max_fitness = max(population_fitness)
+        shift = -min_fitness
+        self.fitness_value += shift
+        desired_min_fitness = 0
+        desired_max_fitness = 1
+        a = (desired_max_fitness - desired_min_fitness) / (max_fitness - min_fitness)
+        b = desired_min_fitness - a * min_fitness
+        fitness_range = max_fitness - min_fitness
+        scaled_fitness = (self.fitness_value - min_fitness) / fitness_range
+        #scaled_fitness = a * scaled_fitness + b # a and b are slope and intercept of the linear scaling equation
+
+        self.fitness_value = scaled_fitness
 
             
 
