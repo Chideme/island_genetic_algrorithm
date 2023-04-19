@@ -13,7 +13,7 @@ from chromosome import Chromosome
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants=2,K=3,r_cross=0.2,r_mut=0.0001,r_inv=0.2,r_elite=0.8,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1000,selection_strategy="elit",evolve_strategy="ring"):
+    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants=2,K=3,r_cross=0.001,r_mut=0.0001,r_inv=0.2,r_elite=0.8,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1000,selection_strategy="elit",evolve_strategy="ring"):
         self.data = data
         self.K = K
         self.pSize = pSize
@@ -160,6 +160,8 @@ class IslandGGA():
     def genetic_operations_elite(self,population):
         """uses the elitism approach for selection"""
         n = len(population)
+        vg= sum([chromosome.fitness_value for chromosome in population ])/len(population)
+        #print(f" Before operations -Island {j} : average fitness = {vg}")
         elit_size = math.ceil(self.r_elite * n)
         elite_pop = self.select_best_chromosomes(population,elit_size)
         children = []
@@ -173,6 +175,8 @@ class IslandGGA():
             children.append(child1)
         for child in children:
             elite_pop.append(child)
+        vg= sum([chromosome.fitness_value for chromosome in elite_pop ])/len(elite_pop)
+        #print(f" After operations -Island {j} : average fitness = {vg}")
         return elite_pop
     
     def genetic_operations(self,population):
@@ -184,17 +188,16 @@ class IslandGGA():
         
 
     
-    
 
     def parallel_genetic_operations(self,island,q):
         """evolve each island per generation"""  
-        island = self.update_pop_fitness_values(island)
-        island = self.genetic_operations(island)
+        island=self.update_pop_fitness_values(island)
+        island =self.genetic_operations(island)
         q.put(island)
 
     def master_fitness_function(self,island,q):
         """Master slave migration"""
-        self.update_pop_fitness_values(island)
+        island=self.update_pop_fitness_values(island)
         q.put(island)
 
     def make_islands(self,population):
@@ -224,23 +227,20 @@ class IslandGGA():
         
 
 
-    def migrate_nearest(self, island_index):
+    def migrate_nearest(self, left_island_index, right_island_index):
         """Perform migration among the islands using the nearest neighbor strategy."""
-        # Find the index of the neighboring islands
-        left_island_index = (island_index - 1) % self.num_islands
-        right_island_index = (island_index + 1) % self.num_islands
-
         # Compute genetic distance between chromosomes in islands i and j
         distances = []
-        for i, ind_i in enumerate(self.islands[island_index]):
+        for i, ind_i in enumerate(self.islands[left_island_index]):
             for j, ind_j in enumerate(self.islands[right_island_index]):
                 distance = ind_i.hamming_distance(ind_j)
                 distances.append((i, j, distance))
 
         # Sort the pairs by genetic distance in ascending order
+        #distances.sort(key=lambda x: x[2], reverse=True) 
         distances.sort(key=lambda x: x[2])
 
-        # Select the top n_migrants individuals from island i with the lowest genetic distance
+        # Select the top n_migrants individuals from island i with the highest genetic distance
         migrants = set()
         for pair in distances:
             i, j, distance = pair
@@ -249,33 +249,31 @@ class IslandGGA():
             if i not in migrants:
                 migrants.add(i)
 
-        # Send migrants to the neighboring island
-        q_left = mp.Queue()
-        q_right = mp.Queue()
+        # Select the corresponding individuals from island j with the highest genetic distance and add them to island j
         for i in migrants:
-            ind = self.islands[island_index][i]
-            q_right.put(ind)
-            q_left.put(ind)
+            ind_i = self.islands[left_island_index][i]
+            best_j = -1
+            best_distance = -1
+            for j, ind_j in enumerate(self.islands[right_island_index]):
+                if j in migrants:
+                    continue
+                distance = ind_i.hamming_distance(ind_j)
+                if distance > best_distance:
+                    best_j = j
+                    best_distance = distance
+            if best_j != -1:
+                ind_j = self.islands[right_island_index][best_j]
+                self.islands[left_island_index].remove(ind_i)
+                self.islands[right_island_index].remove(ind_j)
+                self.islands[left_island_index].append(ind_j)
+                self.islands[right_island_index].append(ind_i)
 
-        for _ in range(self.n_migrants):
-            # Send an individual to the left
-            if not q_left.empty():
-                ind = q_left.get()
-                self.islands[island_index].remove(ind)
-                self.islands[left_island_index].append(ind)
-
-            # Send an individual to the right
-            if not q_right.empty():
-                ind = q_right.get()
-                self.islands[island_index].remove(ind)
-                self.islands[right_island_index].append(ind)  
 
 
+
+    
     def multikuti_migration(self, left_island_index, right_island_index):
         """Perform migration among the islands in a ring topology."""
-        left_queue = mp.Queue()
-        right_queue = mp.Queue()
-
         # Compute genetic distance between chromosomes in islands i and j
         distances = []
         for i, ind_i in enumerate(self.islands[left_island_index]):
@@ -284,8 +282,7 @@ class IslandGGA():
                 distances.append((i, j, distance))
 
         # Sort the pairs by genetic distance in descending order
-        distances.sort(key=lambda x: x[2], reverse=True)
-        # Sort the pairs by genetic distance in ascending order
+        distances.sort(key=lambda x: x[2], reverse=True) 
         #distances.sort(key=lambda x: x[2])
 
         # Select the top n_migrants individuals from island i with the highest genetic distance
@@ -306,150 +303,48 @@ class IslandGGA():
                 if j in migrants:
                     continue
                 distance = ind_i.hamming_distance(ind_j)
-                if distance > best_distance:  # distance > best_distance for original
+                if distance > best_distance:
                     best_j = j
                     best_distance = distance
             if best_j != -1:
                 ind_j = self.islands[right_island_index][best_j]
-                left_queue.put(ind_i)
-                right_queue.put(ind_j)
-
-        # Send and receive migrants
-        # Send an individual to the right
-        def send_migrant(ind, source_island_index, dest_island_index):
-            self.islands[source_island_index].remove(ind)
-            self.islands[dest_island_index].append(ind)
-
-        processes = []
-        for _ in range(self.n_migrants):
-            # Send an individual to the left
-            if not left_queue.empty():
-                ind = left_queue.get()
-                process = mp.Process(target=send_migrant, args=(ind, left_island_index, right_island_index))
-                processes.append(process)
-                process.start()
-
-            if not right_queue.empty():
-                ind = right_queue.get()
-                process = mp.Process(target=send_migrant, args=(ind, right_island_index, left_island_index))
-                processes.append(process)
-                process.start()
-
-        for process in processes:
-            process.join()
-
-    
+                self.islands[left_island_index].remove(ind_i)
+                self.islands[right_island_index].remove(ind_j)
+                self.islands[left_island_index].append(ind_j)
+                self.islands[right_island_index].append(ind_i)
 
 
     def migrate_ring(self, left_island_index, right_island_index):
         """Perform migration among the islands in a ring topology."""
-        left_queue = mp.Queue()
-        right_queue = mp.Queue() 
+        left_queue = []
+        right_queue = []
+        
         # Select the best individuals to migrate to the left
         left_migrants = self.select_best_chromosomes(self.islands[left_island_index], self.n_migrants)
-        for ind in left_migrants:
-            left_queue.put(ind)
+        left_queue.extend(left_migrants)
+        
         # Select the best individuals to migrate to the right
         right_migrants = self.select_best_chromosomes(self.islands[right_island_index], self.n_migrants)
-        for ind in right_migrants:
-            right_queue.put(ind)
-        # Send and receive migrants
-        # Define the migration function
-        def migrate(island1, island2, queue1, queue2):
-            for _ in range(self.n_migrants):
-                # Send an individual to the left
-                if not queue1.empty():
-                    ind = queue1.get()
-                    island1.remove(ind)
-                    island2.append(ind)
-                # Send an individual to the right
-                if not queue2.empty():
-                    ind = queue2.get()
-                    island2.remove(ind)
-                    island1.append(ind)
-            # Create and start the migration processes
-            left_process = mp.Process(target=migrate, args=(self.islands[left_island_index], self.islands[right_island_index], left_queue, right_queue))
-            right_process = mp.Process(target=migrate, args=(self.islands[right_island_index], self.islands[left_island_index], right_queue, left_queue))
-            left_process.start()
-            right_process.start()
-            # Wait for the processes to finish
-            left_process.join()
-            right_process.join()
-
-    def evolve_ring(self):
-        """Ring Topology implementation"""
-        self.re_init()
-        #intiate population
-        self.population = self.init_population()
-        self.islands = list(self.make_islands(self.population))
-        #evolve
-        for iteration in range(self.num_iter):
-            processes = []
-            result_queues = []
-            for j in range(len(self.islands)):
-                result_queue = mp.Queue()
-                process = mp.Process(target=self.parallel_genetic_operations, args=(self.islands[j],result_queue))
-                process.start()
-                processes.append(process)
-                result_queues.append(result_queue)
-            for process in processes:
-                process.join()
-            for j in range(self.num_islands):
-                self.islands[j] = result_queues[j].get()  
-            if iteration % self.m_iter ==0:
-                # Perform migration among islands in a ring topology
-                for i in range(self.num_islands):
-                    left_island_index = (i - 1) % self.num_islands
-                    right_island_index = (i + 1) % self.num_islands
-                    self.migrate_ring(left_island_index, right_island_index)
-                    best = heapq.nlargest(1, self.islands[i], key=lambda x: x.fitness_value)[0]
-                    print(f"Island {i} - Generation {iteration}: Best fitness = {best.fitness_value}")
-            # update population 
-            self.population =   []
-            for i in range(len(self.islands)):
-                self.population.extend(self.islands[i])
-            # add average fitness value to fitness  values to find convergence values
-            self.get_convergence()  
-        # Return the best individual from each island
-        self.get_global_best()
+        right_queue.extend(right_migrants)
         
-    def evolve_nearest(self):
-        """Multikuti implementation"""
-        self.re_init()
-        #intiate population
-        self.population = self.init_population()
-        self.islands = list(self.make_islands(self.population))
-        #evolve
-        for iteration in range(self.num_iter):
-            processes = []
-            result_queues = []
-            for j in range(len(self.islands)):
-                result_queue = mp.Queue()
-                process = mp.Process(target=self.parallel_genetic_operations, args=(self.islands[j],result_queue))
-                process.start()
-                processes.append(process)
-                result_queues.append(result_queue)
-            for process in processes:
-                process.join()
-            for j in range(self.num_islands):
-                self.islands[j] = result_queues[j].get()  
-            if iteration % self.m_iter ==0:
-                # Perform migration among islands in a ring topology
-                for i in range(self.num_islands):
-                    self.migrate_nearest(i)
-                    best = heapq.nlargest(1, self.islands[i], key=lambda x: x.fitness_value)[0]
-                    print(f"Island {i} - Generation {iteration}: Best fitness = {best.fitness_value}")
-            # update population 
-            self.population =   []
-            for i in range(len(self.islands)):
-                self.population.extend(self.islands[i])
-            # add average fitness value to fitness  values to find convergence values
-            self.get_convergence()  
-        # Return the best individual from each island
-        self.get_global_best()
+        # Send and receive migrants
+        for _ in range(self.n_migrants):
+            # Send an individual to the left
+            if left_queue:
+                ind = left_queue.pop()
+                self.islands[left_island_index].remove(ind)
+                self.islands[right_island_index].append(ind)
+            
+            # Send an individual to the right
+            if right_queue:
+                ind = right_queue.pop()
+                self.islands[right_island_index].remove(ind)
+                self.islands[left_island_index].append(ind)
 
-    def evolve_multikuti(self):
-        """Multikuti implementation"""
+
+    def evolve_parallel(self):
+        """Ring Topology implementation"""
+        print(f"Running {self.evolve_strategy}")
         self.re_init()
         #intiate population
         self.population = self.init_population()
@@ -466,28 +361,39 @@ class IslandGGA():
                 result_queues.append(result_queue)
             for process in processes:
                 process.join()
-            for j in range(self.num_islands):
-                self.islands[j] = result_queues[j].get()  
+            for i in range(len(result_queues)):
+                pop  = result_queues[i].get()
+                self.islands[i] = pop  
+            
             if iteration % self.m_iter ==0:
                 # Perform migration among islands in a ring topology
                 for i in range(self.num_islands):
                     left_island_index = (i - 1) % self.num_islands
                     right_island_index = (i + 1) % self.num_islands
-                    self.multikuti_migration(left_island_index, right_island_index)
+                    print(f"Island {i} Migration -Left island {left_island_index} -Right island {right_island_index}")
+                    if self.evolve_strategy =="ring":
+                        self.migrate_ring(left_island_index, right_island_index)
+                    if self.evolve_strategy == "multikuti":
+                        self.multikuti_migration(left_island_index, right_island_index)
+                    if self.evolve_strategy == "nearest":
+                        self.migrate_nearest(left_island_index, right_island_index)
                     best = heapq.nlargest(1, self.islands[i], key=lambda x: x.fitness_value)[0]
-                    print(f"Island {i} - Generation {iteration}: Best fitness = {best.fitness_value}")
+                    #print(f"Island {i} - Generation {iteration}: Best fitness = {best.fitness_value}")
             # update population 
-            self.population =   []
-            for i in range(len(self.islands)):
-                self.population.extend(self.islands[i])
+            self.population =   self.islands
+            for i  in range(len(self.islands)):
+                pop = self.islands[i]
             # add average fitness value to fitness  values to find convergence values
             self.get_convergence()  
+            self.get_global_best()
+            print(f"Generation {iteration}: Best fitness = {self.globalBest.fitness_value}")
         # Return the best individual from each island
         self.get_global_best()
         
 
     def evolve_master_slave(self):
         """Master slave impelementation"""
+        print(f"Running {self.evolve_strategy}")
         # Reinitiate evolution values
         self.re_init()
         self.population = self.init_population()
@@ -513,10 +419,13 @@ class IslandGGA():
             # Calculate average fitness value for convergence
             self.islands = []
             self.get_convergence()
+            self.get_global_best()
+            print(f"Generation {j}: Best fitness = {self.globalBest.fitness_value}")
             
                         
     def evolve_gga(self):
         """GGA impelementation"""
+        print(f"Running {self.evolve_strategy}")
         # Reinitiate evolution values
         self.re_init()
         self.population = self.init_population()
@@ -527,21 +436,18 @@ class IslandGGA():
             self.globalBest = heapq.nlargest(1, self.population, key=lambda x: x.fitness_value)[0]
             # Calculate average fitness value for convergence
             self.get_convergence()
+            self.get_global_best()
+            print(f"Generation {j}: Best fitness = {self.globalBest.fitness_value}")
             
 
     def evolve(self):
         """evolve based on strategy"""
-        if self.evolve_strategy == "ring":
-            self.evolve_ring()
-        if self.evolve_strategy =="gga":
-            self.evolve_gga()
-        if self.evolve_strategy =="multikuti":
-            self.evolve_multikuti()
         if self.evolve_strategy == "master_slave":
             self.evolve_master_slave()
-        if self.evolve_strategy == "nearest":
-            self.evolve_nearest()
-        
+        elif self.evolve_strategy == "gga":
+            self.evolve_gga()
+        else:
+            self.evolve_parallel()
 ############# Elite selection Implemenation
 class EliteIslandGGA(IslandGGA):
 

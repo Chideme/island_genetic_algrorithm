@@ -418,7 +418,7 @@ class Chromosome():
                 dist_counter += 1
         return dist_counter
     
-    ### Crossover
+    ### one point Crossover
     def crossover(self,parent2,r_cross):
         child1 = self
         child2 = parent2
@@ -438,6 +438,27 @@ class Chromosome():
                 child2.generateWeight()
 
         return child1,child2
+    # 2 point Crossover
+    def crossover2(self, parent2, r_cross):
+        child1 = self
+        child2 = parent2
+        # Check for recombination
+        if random.random() < r_cross:
+            # Select two crossover points that are not on the end of the string
+            index1 = random.randint(1, len(self.sltp_part)-2)
+            index2 = random.randint(index1+1, len(self.sltp_part)-1)
+            # Perform crossover on SLTP
+            child1.sltp_part = self.sltp_part[:index1] + parent2.sltp_part[index1:index2] + self.sltp_part[index2:]
+            child2.sltp_part = parent2.sltp_part[:index1] + self.sltp_part[index1:index2] + parent2.sltp_part[index2:]
+            # Perform crossover on weight
+            child1.weight_part = self.weight_part[:index1] + parent2.weight_part[index1:index2] + self.weight_part[index2:]
+            if child1.weight_part.count(0) != self.K+1:
+                child1.generateWeight()
+            child2.weight_part = parent2.weight_part[:index1] + self.weight_part[index1:index2] + parent2.weight_part[index2:]
+            if child2.weight_part.count(0) != self.K+1:
+                child2.generateWeight()
+        return child1, child2
+
     ###Mutation
 
     def mutation(self,r_mut):
@@ -464,6 +485,7 @@ class Chromosome():
             ts_idx = random.randrange(len(self.group_part[grp_idx1]))
             ts = self.group_part[grp_idx1][ts_idx]
             self.group_part[grp_idx2].append(ts)
+            self.group_part[grp_idx1].remove(ts)
                 
     ###Inversion
     def inversion(self,r_inv):
