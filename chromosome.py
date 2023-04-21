@@ -9,6 +9,8 @@ import multiprocess as mp
 import matplotlib.pyplot as plt
 from datetime import datetime,date, timedelta
 import time
+from copy import deepcopy
+
 
 def get_last_date_of_month(year, month):
     """Return the last date of the month.
@@ -420,8 +422,8 @@ class Chromosome():
     
     ### one point Crossover
     def crossover(self,parent2,r_cross):
-        child1 = self
-        child2 = parent2
+        child1 = deepcopy(self)
+        child2 = deepcopy(parent2)
         # check for recombination
         if random.random() < r_cross:
             # select crossover point that is not on the end of the string
@@ -429,7 +431,9 @@ class Chromosome():
             # perform crossover on SLTP
             child1.sltp_part = self.sltp_part[index:]+ parent2.sltp_part[:index] 
             child2.sltp_part = parent2.sltp_part[index:] + self.sltp_part[:index] 
+        if random.random() < r_cross:
             # perform crossover on weight
+            index = random.randint(1, len(self.weight_part)-2)
             child1.weight_part = self.weight_part[index:] + parent2.weight_part[:index] 
             if child1.weight_part.count(0) != self.K+1:
                 child1.generateWeight()
@@ -439,9 +443,9 @@ class Chromosome():
 
         return child1,child2
     # 2 point Crossover
-    def crossover2(self, parent2, r_cross):
-        child1 = self
-        child2 = parent2
+    def crossover1(self, parent2, r_cross):
+        child1 = deepcopy(self)
+        child2 = deepcopy(parent2)
         # Check for recombination
         if random.random() < r_cross:
             # Select two crossover points that are not on the end of the string
@@ -480,12 +484,15 @@ class Chromosome():
 
         # on TS part
         if random.random() < r_mut:
-            grp_idx1 = random.randrange(len(self.group_part))
-            grp_idx2 = random.randrange(len(self.group_part))
-            ts_idx = random.randrange(len(self.group_part[grp_idx1]))
-            ts = self.group_part[grp_idx1][ts_idx]
-            self.group_part[grp_idx2].append(ts)
-            self.group_part[grp_idx1].remove(ts)
+            i = random.randrange(self.K)
+            left_group_index = (i - 1) % self.K
+            right_group_index = (i + 1) % self.K
+            if len(self.group_part[left_group_index]) > 0:
+                ts_idx = random.randrange(len(self.group_part[left_group_index]))
+                ts = self.group_part[left_group_index][ts_idx]
+                self.group_part[right_group_index].append(ts)
+                self.group_part[left_group_index].remove(ts)
+            
                 
     ###Inversion
     def inversion(self,r_inv):
