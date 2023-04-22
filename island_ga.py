@@ -14,7 +14,7 @@ from copy import deepcopy
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants=2,K=3,r_cross=0.001,r_mut=0.0001,r_inv=0.2,r_elite=0.8,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1000,selection_strategy="elit",evolve_strategy="ring"):
+    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants=2,K=3,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1000,selection_strategy="elit",evolve_strategy="ring"):
         self.data = data
         self.K = K
         self.pSize = pSize
@@ -86,15 +86,15 @@ class IslandGGA():
         
         """Calculate the convergence value for each island."""
         
-        if self.islands:
+        """if self.islands:
             convergence = []
             for island in self.islands:
                 island_average_fitness = sum([chromosome.fitness_value for chromosome in island ])/len(island)
                 convergence.append(island_average_fitness)
-            self.convergence_values.append(convergence)
-        else:
-            average_fitness = sum([chromosome.fitness_value for chromosome in self.population ])/len(self.population)
-            self.convergence_values.append(average_fitness)
+            self.convergence_values.append(np.average(convergence))
+        else:"""
+        average_fitness = sum([chromosome.fitness_value for chromosome in self.population ])/len(self.population)
+        self.convergence_values.append(average_fitness)
     
 ######## MIGRATION
 
@@ -188,13 +188,10 @@ class IslandGGA():
 
     def operations(self, island):
         """evolve each island per generation"""
-        #vg= sum([chromosome.fitness_value for chromosome in island ])/len(island)
-        #print(f" Before operations  : average fitness = {vg}")
+       
         island = self.genetic_operations(island)
         island = self.update_pop_fitness_values(island)
-        vg= sum([chromosome.fitness_value for chromosome in island ])/len(island)
-        #print(f" After operations : average fitness = {vg}")
-        #print("==========================================")
+
         
         return island
 
@@ -404,7 +401,7 @@ class IslandGGA():
                 self.population.extend(island)
             self.get_convergence()
             self.get_global_best()
-            print(f"Generation {iteration}: Best fitness = {self.globalBest.fitness_value} Average Fitness( last island) = {self.convergence_values[-1][-1]}")
+            print(f"Generation {iteration}: Best fitness = {self.globalBest.fitness_value} Average Fitness = {self.convergence_values[-1]}")
             print(f"GENERATION {iteration} END")
         # Return the best individual from each island
         self.get_global_best()
