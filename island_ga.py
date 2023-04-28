@@ -171,7 +171,14 @@ class IslandGGA():
             child1,child2 = parent1.crossover(parent2,self.r_cross)
             child1.mutation(self.r_mut)
             child1.inversion(self.r_inv)
-            children.append(child1)
+            child2.mutation(self.r_mut)
+            child2.inversion(self.r_inv)
+            child1.calculate_chromosome_fitness(self.data,self.allocated_capital)
+            child2.calculate_chromosome_fitness(self.data,self.allocated_capital)
+            if child2.fitness_value > child1.fitness_value:
+                children.append(child2)
+            else:
+                children.append(child1)
         for child in children:
             elite_pop.append(child)
         
