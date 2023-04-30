@@ -165,6 +165,13 @@ class IslandGGA():
         q.put(island)
 
     def master_fitness_function(self,island,q):
+        #pool = mp.Pool(processes=len(self.islands))
+        # iterate over the islands and apply the master fitness function in parallel
+        #results_ = [pool.apply_async(self.update_pop_fitness_values, args=(island,)) for island in self.islands]
+        # wait for all processes to finish and retrieve the results
+        #results= [result.get() for result in results_]
+        #pool.close()
+        #pool.join()
         """Master slave migration"""
         self.update_pop_fitness_values(island)
         q.put(island)

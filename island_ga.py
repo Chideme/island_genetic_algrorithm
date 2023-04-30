@@ -193,17 +193,17 @@ class IslandGGA():
         
 
 
-    def operations(self, island):
+    def operations(self, island,q):
         """evolve each island per generation"""
        
         island = self.genetic_operations(island)
         island = self.update_pop_fitness_values(island)
 
         
-        return island
+        q.put(island)
 
     
-    def parallel_genetic_operations(self):
+    def parallel_genetic_operations11(self):
         
         # create a process pool with the number of worker processes equal to the number of islands
         pool = mp.Pool(processes=len(self.islands))
@@ -218,24 +218,44 @@ class IslandGGA():
         pool.join()
         # update the population
         self.islands = islands
-       
 
+    def parallel_genetic_operations(self):
+        """evolve each island per generation"""  
+        #evolve
+        processes = []
+        result_queues = []
+        for j in range(len(self.islands)):
+            result_queue = mp.Queue()
+            process = mp.Process(target=self.operations, args=(self.islands[j],result_queue))
+            process.start()
+            processes.append(process)
+            result_queues.append(result_queue)
+        for process in processes:
+            process.join()
+        for j in range(len(self.islands)):
+            self.islands[j] = result_queues[j].get() 
 
+    def fitness_fun(self,island,q):
+        """Master slave migration"""
+        self.update_pop_fitness_values(island)
+        q.put(island) 
 
     def master_fitness_function(self):
-        """Master slave migration"""
-        #island=self.update_pop_fitness_values(island)
-        children = []
+        """Master slave migration""" 
         self.islands = list(self.make_islands(self.population))
-        pool = mp.Pool(processes=len(self.islands))
-        # iterate over the islands and apply the master fitness function in parallel
-        results_ = [pool.apply_async(self.update_pop_fitness_values, args=(island,)) for island in self.islands]
-        # wait for all processes to finish and retrieve the results
-        results= [result.get() for result in results_]
-        pool.close()
-        pool.join()
-        for result in results:
-            children.extend(result)
+        processes = []
+        result_queues = []
+        children = []
+        for i in range(len(self.islands)):
+            result_queue =mp.Queue()
+            process =mp.Process(target=self.fitness_fun, args=(self.islands[i],result_queue))
+            process.start()
+            processes.append(process)
+            result_queues.append(result_queue)
+        for process in processes:
+            process.join()  
+        for result in result_queues:
+            children.extend(result.get())
         return children
 
     def make_islands(self,population):
