@@ -214,7 +214,8 @@ class IslandGGA():
         # wait for all processes to finish and retrieve the results
         islands = [result.get() for result in results]
         #islands = [self.operations(i) for i in self.islands]
-
+        pool.close()
+        pool.join()
         # update the population
         self.islands = islands
        
@@ -231,7 +232,8 @@ class IslandGGA():
         results_ = [pool.apply_async(self.update_pop_fitness_values, args=(island,)) for island in self.islands]
         # wait for all processes to finish and retrieve the results
         results= [result.get() for result in results_]
-
+        pool.close()
+        pool.join()
         for result in results:
             children.extend(result)
         return children
