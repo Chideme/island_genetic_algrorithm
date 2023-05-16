@@ -27,7 +27,7 @@ def get_last_date_of_month(year, month):
         last_date = datetime(year, month, 31)
     else:
         last_date = datetime(year, month + 1, 1) + timedelta(days=-1)
-    last_date = last_date.date()
+    #last_date = last_date.date()
     return last_date
 
 class Chromosome():
@@ -242,7 +242,7 @@ class Chromosome():
         for row in data.itertuples(index=False):    
             #close all trade positions at month end. 
             last_date = get_last_date_of_month(row.Date.year,row.Date.month)
-            if row.Date == last_date :
+            if row.Date == last_date:
                 if market_position =='in':
                     sell_price = row.close
                     trade_return = (sell_price - cost_price)/cost_price
