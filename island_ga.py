@@ -14,13 +14,14 @@ from copy import deepcopy
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants=2,K=3,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1000,selection_strategy="elit",evolve_strategy="ring"):
+    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants_rate=0.5,K=3,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1000,selection_strategy="elit",evolve_strategy="ring"):
         self.data = data
         self.K = K
         self.pSize = pSize
         self.strategies = strategies
         self.num_islands = num_islands
-        self.n_migrants = n_migrants
+        #self.n_migrants_rate = n_migrants_rate
+        self.n_migrants =math.ceil(n_migrants_rate * (pSize // num_islands))
         self.m_iter = m_iter
         self.r_cross= r_cross
         self.r_mut = r_mut
@@ -39,6 +40,7 @@ class IslandGGA():
         self.best_individuals = []
         self.globalBest  = []
         self.convergence_values = []
+        self.island_convergence = []
         self.population = []
 
     def re_init(self):
@@ -86,16 +88,17 @@ class IslandGGA():
         
         """Calculate the convergence value for each island."""
         
-        """if self.islands:
+        if self.islands:
             convergence = []
             for island in self.islands:
                 island_average_fitness = sum([chromosome.fitness_value for chromosome in island ])/len(island)
                 convergence.append(island_average_fitness)
+            self.island_convergence.append(convergence)
             self.convergence_values.append(np.average(convergence))
-        else:"""
-        average_fitness = sum([chromosome.fitness_value for chromosome in self.population ])/len(self.population)
-        self.convergence_values.append(average_fitness)
-    
+        else:
+            average_fitness = sum([chromosome.fitness_value for chromosome in self.population ])/len(self.population)
+            self.convergence_values.append(average_fitness)
+        
 ######## MIGRATION
 
 
