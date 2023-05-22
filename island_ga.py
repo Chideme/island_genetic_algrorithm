@@ -53,7 +53,7 @@ class IslandGGA():
     def init_population(self):
         population =[]
         for i in range(self.pSize):
-            chromosome = Chromosome(self.K,self.n_migrants,self.b,self.strategies,self.num_weight,self.stop_loss,self.take_profit)
+            chromosome = Chromosome(self.K,self.n,self.b,self.strategies,self.num_weight,self.stop_loss,self.take_profit)
             population.append(chromosome.create_chromosome())
         
         return population
@@ -132,10 +132,6 @@ class IslandGGA():
         
         for chromosome in island:
             chromosome.calculate_chromosome_fitness(self.data,self.allocated_capital)
-        max_fitness_chromosome = heapq.nlargest(1, island, key=lambda x: x.fitness_value)[0]
-        min_fitness_chromosome = heapq.nsmallest(1, island, key=lambda x: x.fitness_value)[0]
-        max_fitness = max_fitness_chromosome.fitness_value
-        min_fitness = min_fitness_chromosome.fitness_value
         #for chromosome in island:
          #   chromosome.scale_fitness(max_fitness,min_fitness)
         return island
@@ -426,7 +422,8 @@ class IslandGGA():
             self.parallel_genetic_operations()
             if iteration % self.m_iter ==0:
                 if iteration != 0:
-                    self.migration()
+                    if self.n_migrants != 0:
+                        self.migration()
             # update population 
             self.population=[]
             for island in self.islands:
