@@ -252,7 +252,7 @@ class IslandGGA():
             processes.append(process)
             result_queues.append(result_queue)
         for process in processes:
-            process.join()  
+            process.join()
         for result in result_queues:
             children.extend(result.get())
         return children
