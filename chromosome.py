@@ -41,11 +41,12 @@ class Chromosome():
         self.strategies = strategies
         self.stop_loss = stop_loss
         self.take_profit = take_profit
-        self.fitness_value = 1
+        self.fitness_value = 0
         self.wb=0
         self.profit=0
         self.corr=0
         self.gb=0
+        self.mdd = 0
         self.sltp_part = []
         self.group_part = []
         self.weight_part = []
@@ -149,10 +150,24 @@ class Chromosome():
         total = 0
         for i in range(len(self.group_part)):
             for j in self.group_part[i]:
+                #print(f"{j}")
                 avg_return = ts_data[j].mean()
+                #print(f"weight {weights[i+1]} * avg {avg_return} * cap {allocated_capital}")
                 total += avg_return*weights[i+1]*allocated_capital
+                #print(f"total {total}")
         return total
 
+    def getMDD(self,ts_data):
+        total = 0
+        for i in range(len(self.group_part)):
+            tsp_mins = []
+            for j in self.group_part[i]:
+                min_return = ts_data[j].min()
+                tsp_mins.append(min_return)
+            if tsp_mins:
+                total+= min(tsp_mins)
+        mdd = total/len(self.group_part)
+        return mdd
 
         
     def getCorrelation(self,ts_data):
@@ -258,7 +273,7 @@ class Chromosome():
                     try:
                         avg_monthly_return = monthly_return/monthly_freq
                     except ZeroDivisionError:
-                        avg_monthly_return = 1
+                        avg_monthly_return = 0
                     monthly_returns.append(avg_monthly_return)
                 
                     monthly_return = 0
@@ -300,16 +315,28 @@ class Chromosome():
     def calculate_chromosome_fitness(self,data,allocated_capital):
         ts_data = self.strategy_performance(data)
         normalised_ts_data = self.normalisation(ts_data)
-        profit =self.getProfit(normalised_ts_data,allocated_capital)
-        corr = self.getCorrelation(ts_data)
-        gb = self.groupBalance() 
-        wb = self.weightBalance() 
+        self.profit =self.getProfit(ts_data,allocated_capital)
+        self.corr = self.getCorrelation(ts_data)
+        self.gb = self.groupBalance() 
+        self.wb = self.weightBalance() 
+        self.mdd = self.getMDD(ts_data)
+        fit_profit = self.getProfit(normalised_ts_data,allocated_capital)
         try:
-            fitness = profit * (1/corr) *gb *wb #* np.power(gb,2)
-            self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
+            fitness = fit_profit * (1/self.corr) *self.gb *self.wb #* np.power(gb,2)
         except ZeroDivisionError:
-            fitness = profit *gb *wb 
-            self.wb,self.profit,self.corr,self.gb = wb,profit,corr,np.power(gb,2)
+            fitness = fit_profit *self.gb *self.wb 
+        self.fitness_value = fitness
+    
+    def prev_chromosome_fitness(self,data,allocated_capital):
+        ts_data = self.strategy_performance(data)
+        normalised_ts_data = self.normalisation(ts_data)
+        self.profit =self.getProfit(ts_data,allocated_capital)
+        self.corr = self.getCorrelation(ts_data)
+        self.gb = self.groupBalance() 
+        self.wb = self.weightBalance() 
+        self.mdd = self.getMDD(ts_data)
+        fit_profit = self.getProfit(normalised_ts_data,allocated_capital)
+        fitness = fit_profit * self.mdd *self.gb *self.wb #* np.power(gb,2)
         self.fitness_value = fitness
     
     def scale_fitness(self,max_fitness,min_fitness):
@@ -328,80 +355,7 @@ class Chromosome():
 
         self.fitness_value = scaled_fitness
 
-            
-
-    #####mdd values
-    # generate maxdraw down
-    def generateMDD(self,strategy,stop_loss,take_profit):
-        monthly_returns = []
-        monthly_return = 0
-        trade_freq = 0
-        monthly_freq = 0
-        market_position = 'out'
-        max_loss = 0
-        for row in self.data.itertuples(index=False):    
-            #close all trade positions at month end. 
-            last_date = get_last_date_of_month(row.Date.year,row.Date.month)
-            print(last_date)
-            if row.Date == last_date :
-                if market_position =='in':
-                    sell_price = row.close
-                    trade_return = (sell_price - cost_price)/cost_price
-                    if trade_return < max_loss:
-                            max_loss = trade_return
-                    market_position = 'out' 
-                    trade_freq +=1
-                    monthly_freq +=1
-                    monthly_return += trade_return
-                    avg_monthly_return =monthly_return/monthly_freq
-                    monthly_returns.append(avg_monthly_return)
-                    monthly_return = 0
-                    monthly_freq = 0       
-                else:
-                    try:
-                        avg_monthly_return = monthly_return/monthly_freq
-                    except ZeroDivisionError:
-                        avg_monthly_return = 1
-                    monthly_returns.append(avg_monthly_return)
-                
-                    monthly_return = 0
-                    monthly_freq = 0         
-            else:
-                if market_position == 'out' :
-                    if row[self.data.columns.get_loc(strategy)] == 1:
-                        cost_price = row.close
-                        market_position = 'in'
-                        
-                else:
-                    sell_price = row.close
-                    trade_return = (sell_price - cost_price)/cost_price
-                    if trade_return <= stop_loss or trade_return >= take_profit: 
-                        trade_freq +=1
-                        monthly_freq+=1
-                        if trade_return < max_loss:
-                            max_loss = trade_return
-                        monthly_return += trade_return
-                        market_position = 'out'   
-                        
-                    if row[self.data.columns.get_loc(strategy)] == 0 and trade_return >= take_profit :
-                        trade_freq +=1
-                        monthly_freq+=1
-                        if trade_return < max_loss:
-                            max_loss = trade_return
-                        monthly_return += trade_return
-                        market_position = 'out'
     
-    
-        return max_loss
-
-    def strategy_mdd(self):
-        chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp(self.sltp_part)
-        strategy_performance = {}
-        for strategy in self.strategies:
-            strategy_performance[strategy] = self.generateMDD(strategy,chromomosome_stop_loss,chromomosome_take_profit)
-            
-        
-        return strategy_performance
     
      ##### Genetic operators
     def hamming_distance(self,chromosome2): 	
