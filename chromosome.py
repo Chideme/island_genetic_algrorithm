@@ -308,36 +308,24 @@ class Chromosome():
         chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp()
         strategy_performance = {}
         for strategy in self.strategies:
-            strategy_performance[strategy] = self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)  
+            strategy_performance[strategy] =  self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)
         strategy_performance = pd.DataFrame.from_dict(strategy_performance)
-        return strategy_performance
+        return strategy_performance 
 
     def calculate_chromosome_fitness(self,data,allocated_capital):
         ts_data = self.strategy_performance(data)
+        self.mdd = self.getMDD(ts_data)
+        self.profit =self.getProfit(ts_data,allocated_capital)
         normalised_ts_data = self.normalisation(ts_data)
         self.profit =self.getProfit(ts_data,allocated_capital)
         self.corr = self.getCorrelation(ts_data)
         self.gb = self.groupBalance() 
         self.wb = self.weightBalance() 
-        self.mdd = self.getMDD(ts_data)
         fit_profit = self.getProfit(normalised_ts_data,allocated_capital)
-        try:
-            fitness = fit_profit * (1/self.corr) *self.gb *self.wb #* np.power(gb,2)
-        except ZeroDivisionError:
-            fitness = fit_profit *self.gb *self.wb 
+        fit_mdd = self.getMDD(normalised_ts_data)
+        fitness = fit_profit* fit_mdd   *self.gb *self.wb #* np.power(gb,2)
         self.fitness_value = fitness
     
-    def prev_chromosome_fitness(self,data,allocated_capital):
-        ts_data = self.strategy_performance(data)
-        normalised_ts_data = self.normalisation(ts_data)
-        self.profit =self.getProfit(ts_data,allocated_capital)
-        self.corr = self.getCorrelation(ts_data)
-        self.gb = self.groupBalance() 
-        self.wb = self.weightBalance() 
-        self.mdd = self.getMDD(ts_data)
-        fit_profit = self.getProfit(normalised_ts_data,allocated_capital)
-        fitness = fit_profit * self.mdd *self.gb *self.wb #* np.power(gb,2)
-        self.fitness_value = fitness
     
     def scale_fitness(self,max_fitness,min_fitness):
         # Linear scaling
