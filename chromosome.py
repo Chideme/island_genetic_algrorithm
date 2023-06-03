@@ -9,6 +9,7 @@ import multiprocess as mp
 import matplotlib.pyplot as plt
 from datetime import datetime,date, timedelta
 import time
+from sklearn.preprocessing import MinMaxScaler
 from copy import deepcopy
 
 
@@ -91,8 +92,6 @@ class Chromosome():
         self.generateWeight()
         return self
         
-        
-    
 
     #Fitness Function
         
@@ -106,21 +105,14 @@ class Chromosome():
         return modified[max_key], modified[min_key]
 
 
-    def normalisation_mdd(self,p4mc):
+    def normalisation(self,p4mc):
         max_value,min_value = self.get_max_min(p4mc)
         for i in p4mc:
             p4mc[i] = (p4mc[i] - min_value )/ (max_value - min_value)
         return p4mc
 
-    def normalisation(self,trading_strategies_data):
-        normalised_ts_data = trading_strategies_data.copy()
-        for ts in trading_strategies_data.columns:
-            max_value = trading_strategies_data[ts].max()
-            min_value = trading_strategies_data[ts].min()
-            normalised_ts_data[ts] = (trading_strategies_data[ts] - min_value) / (max_value - min_value)
-        return normalised_ts_data
 
-    def getWeights(self):
+    def getWeights1(self):
         weights = self.weight_part.copy()
         K = self.K+1
         group_weight = {k: [] for k in range(K)}
@@ -142,32 +134,129 @@ class Chromosome():
                 percent = round(1/(self.K+1),2)
                 group_weight[i] = percent
         return group_weight
+    
+    def getWeights(self):
+            weights = self.weight_part.copy()
+            K = self.K +1
+            group_weight = {k: [] for k in range(K)}
+            
+            # Divide the weights into K groups
+            for i in range(K):
+                while weights:
+                    x = weights.pop(0)
+                    if x == 0:
+                        break
+                    else:
+                        group_weight[i].append(x)
+            
+            total_1s = sum([i for i in self.weight_part if i == 1])
+            for i in group_weight:
+                try:
+                    group_weight[i] = round(len(group_weight[i]) / total_1s, 2)
+                except ZeroDivisionError:
+                    group_weight[i] = 0
+            
+            if all(value == 0 for value in group_weight.values()) or group_weight[0] == 1:
+                percent = round(1 / (K), 2)
+                for i in group_weight:
+                    group_weight[i] = percent
+            
+            return group_weight
+
+      
         
 
     def getProfit(self,ts_data,allocated_capital):
         weights = self.getWeights()
         self.weights = weights
         total = 0
+        ts_profits = {}
         for i in range(len(self.group_part)):
+            group_contribution = 0
             for j in self.group_part[i]:
-                #print(f"{j}")
-                avg_return = ts_data[j].mean()
-                #print(f"weight {weights[i+1]} * avg {avg_return} * cap {allocated_capital}")
-                total += avg_return*weights[i+1]*allocated_capital
-                #print(f"total {total}")
-        return total
+                cumulative_returns = (1 + ts_data[j]).cumprod()
+                profit = cumulative_returns.iloc[-1] - 1
+                ts_profits[j]=profit
+                contribution = profit*weights[i+1]*allocated_capital 
+                group_contribution += contribution 
+            try:   
+                total+=group_contribution/len(self.group_part[i])  
+            except:
+                total+= 0
+           
+        normalised_total = 0 
+        ts_profits = self.normalisation(ts_profits)
+        for i in range(len(self.group_part)):
+            group_contribution = 0
+            for j in self.group_part[i]:
+                if weights[i+1] !=0:
+                    normalised_profit = ts_profits[j]
+                    normalised_contribution = normalised_profit*weights[i+1]*allocated_capital
+                    group_contribution +=normalised_contribution
+            try:
+                normalised_total += group_contribution/len(self.group_part[i])  
+            except:
+                normalised_total +=0
+        
+        return total,normalised_total
+    
+    def getProfit(self, ts_data, allocated_capital):
+        weights = self.getWeights()
+        total = 0
+        normalised_total = 0
+        
+        # Calculate profits for each trading strategy
+        ts_profits = (1 + ts_data).cumprod().iloc[-1] - 1
+        
+        for i, group in enumerate(self.group_part):
+            if weights[i+1] != 0:
+                group_profits = ts_profits[group]
+                
+                # Calculate contributions for the original values
+                contribution = group_profits * weights[i+1] * allocated_capital
+                total += contribution.mean()
+                
+                # Normalize profits and calculate contributions
+                normalized_profits = (group_profits - group_profits.min()) / (group_profits.max() - group_profits.min())
+                normalized_contribution = normalized_profits * weights[i+1] * allocated_capital
+                normalised_total += normalized_contribution.mean()
+        
+        return total, normalised_total
 
+    
+
+    
     def getMDD(self,ts_data):
         total = 0
+        ts_mdd = {}
         for i in range(len(self.group_part)):
             tsp_mins = []
             for j in self.group_part[i]:
-                min_return = ts_data[j].min()
-                tsp_mins.append(min_return)
+                # Calculate the cumulative returns for each asset at the end of each month
+                cumulative_returns = (1+ ts_data[j]).cumprod()
+                # Calculate the cumulative maximum value for each asset at the end of each month
+                cumulative_max = cumulative_returns.cummax()
+                # Calculate the drawdown for each asset at the end of each month
+                drawdown = cumulative_max - cumulative_returns
+                # Calculate the maximum drawdown for each asset
+                max_drawdown = drawdown.max()
+                ts_mdd[j] = max_drawdown
+                tsp_mins.append(max_drawdown)
             if tsp_mins:
                 total+= min(tsp_mins)
         mdd = total/len(self.group_part)
-        return mdd
+        normalised_total = 0 
+        ts_mdd = self.normalisation(ts_mdd)
+        for i in range(len(self.group_part)):
+            for j in self.group_part[i]:
+                normalised_mdd = ts_mdd[j]
+                normalised_contribution = normalised_mdd
+                normalised_total += normalised_contribution  
+     
+        normalised_mdd = normalised_total/len(self.group_part)
+        return mdd, normalised_mdd
+    
+    
 
         
     def getCorrelation(self,ts_data):
@@ -187,7 +276,7 @@ class Chromosome():
             total = total
         return total
 
-    def groupBalance(self):
+    def groupBalance1(self):
         N = len(self.strategies)
         gb = 0
         for group in self.group_part:
@@ -203,6 +292,18 @@ class Chromosome():
         if gb == 0:
             gb = 1
         return gb
+    
+    def groupBalance(self):
+        N = len(self.strategies)
+        num_groups = len(self.group_part)
+        gb = 0
+        for group in self.group_part:
+            g_size = len(group)
+            g_result = g_size / N if N > 0 else 0
+            g = -g_result * np.log(g_result) if g_result > 0 else 0
+            gb += g
+
+        return gb / num_groups
 
     def weightBalance(self):
         weight_part = self.weight_part.copy()
@@ -223,14 +324,13 @@ class Chromosome():
                 w = len(weights[i])/TL
             except ZeroDivisionError:
                 w = 0
-            if w == 0:
-                wb = 0  
-            else:
+            if w !=0:
                 wb = -w * np.log(w)
-            if wb:
-                gb += wb
-        if gb == 0:
-            gb = 1
+            else:
+                wb = 0
+            
+            gb += wb
+        
         return gb
     
     def binary_to_sltp(self):
@@ -310,20 +410,16 @@ class Chromosome():
         for strategy in self.strategies:
             strategy_performance[strategy] =  self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)
         strategy_performance = pd.DataFrame.from_dict(strategy_performance)
-        return strategy_performance 
+        return strategy_performance
 
     def calculate_chromosome_fitness(self,data,allocated_capital):
-        ts_data = self.strategy_performance(data)
-        self.mdd = self.getMDD(ts_data)
-        self.profit =self.getProfit(ts_data,allocated_capital)
-        normalised_ts_data = self.normalisation(ts_data)
-        self.profit =self.getProfit(ts_data,allocated_capital)
-        self.corr = self.getCorrelation(ts_data)
+        monthly_returns = self.strategy_performance(data)
+        self.mdd,fit_mdd = self.getMDD(monthly_returns)
+        self.profit,fit_profit =self.getProfit(monthly_returns,allocated_capital)
+        self.corr = self.getCorrelation(monthly_returns)
         self.gb = self.groupBalance() 
-        self.wb = self.weightBalance() 
-        fit_profit = self.getProfit(normalised_ts_data,allocated_capital)
-        fit_mdd = self.getMDD(normalised_ts_data)
-        fitness = fit_profit* fit_mdd   *self.gb *self.wb #* np.power(gb,2)
+        self.wb = self.weightBalance()
+        fitness = fit_profit + fit_mdd  + self.gb + self.wb #* np.power(gb,2)
         self.fitness_value = fitness
     
     

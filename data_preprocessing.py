@@ -56,56 +56,121 @@ class Data:
         plt.show()
     
     def create_signals(self):
-        #rename column to remove spaces in column names
-        self.data =self.data.rename(columns={'Close': 'close', 'Volume': 'volume',
-                                'Open':'open','High':'high','Low':'low'})
-                                
+        # Rename columns to remove spaces in column names
+        self.data = self.data.rename(columns={'Close': 'close', 'Volume': 'volume', 'Open': 'open', 'High': 'high', 'Low': 'low'})
+        # Change date string into date format and sort the dataframe in ascending order
 
-        #change date string into date format and sort the dataframe in ascending order
-
-        #Create Signals using Talib library
-        self.data['5EMA'] = ta.SMA(np.array(self.data['close']),5)
-        self.data['20EMA'] = ta.EMA(np.array(self.data['close']), timeperiod = 20)
-        self.data['RSI'] = ta.RSI(np.array(self.data['close']), timeperiod = 14)
+        # Create signals using Talib library
+        self.data['5EMA'] = ta.SMA(np.array(self.data['close']), 5)
+        self.data['20EMA'] = ta.EMA(np.array(self.data['close']), timeperiod=20)
+        self.data['RSI'] = ta.RSI(np.array(self.data['close']), timeperiod=14)
         self.data['WILLR'] = ta.WILLR(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)
         self.data['MOM'] = ta.MOM(np.array(self.data['close']), timeperiod=5)
         self.data['CCI'] = ta.CCI(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)
-        self.data['SLOWK'],self.data['SLOWD'] = ta.STOCH(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), fastk_period=14, slowk_period=3, slowd_period=3)
-        self.data['MACD'],self.data['MACDSIGNAL'],self.data['MACDHIST'] = ta.MACD(np.array(self.data['close']), fastperiod=12, slowperiod=26, signalperiod=9)
-        self.data['DMI'] = ta.DX(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)   
+        self.data['SLOWK'], self.data['SLOWD'] = ta.STOCH(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), fastk_period=14, slowk_period=3, slowd_period=3)
+        self.data['MACD'], self.data['MACDSIGNAL'], self.data['MACDHIST'] = ta.MACD(np.array(self.data['close']), fastperiod=12, slowperiod=26, signalperiod=9)
+        self.data['DMI'] = ta.DX(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)
+        self.data['ATR'] = ta.ATR(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)
+        self.data['OBV'] = ta.OBV(np.array(self.data['close'], dtype=float), np.array(self.data['volume'], dtype=float))
+        self.data['ADOSC'] = ta.ADOSC(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), np.array(self.data['close'], dtype=float), np.array(self.data['volume'], dtype=float), fastperiod=3, slowperiod=10)
+        self.data['MFI'] = ta.MFI(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), np.array(self.data['close'], dtype=float), np.array(self.data['volume'], dtype=float), timeperiod=14)
+        self.data['ROC'] = ta.ROC(np.array(self.data['close'], dtype=float), timeperiod=10)
+        self.data['TRIX'] = ta.TRIX(np.array(self.data['close'], dtype=float), timeperiod=30)
+        self.data['AROON_UP'], self.data['AROON_DOWN'] = ta.AROON(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), timeperiod=14)
+        self.data['ADX'] = ta.ADX(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), np.array(self.data['close'], dtype=float), timeperiod=14)
+        self.data['BBANDS_UPPER'], self.data['BBANDS_MIDDLE'], self.data['BBANDS_LOWER'] = ta.BBANDS(np.array(self.data['close'], dtype=float), timeperiod=20, nbdevup=2, nbdevdn=2)
+        self.data['TRIMA'] = ta.TRIMA(np.array(self.data['close'], dtype=float), timeperiod=30)
+        self.data['SAR'] = ta.SAR(np.array(self.data['high'], dtype=float), np.array(self.data['low'],), acceleration=0.02, maximum=0.2)
+        self.data['STOCHRSI_FASTK'], self.data['STOCHRSI_FASTD'] = ta.STOCHRSI(np.array(self.data['close'], dtype=float), timeperiod=14, fastk_period=5, fastd_period=3)
 
 
-    def generate_candidate_trading_signals(self,data):
+
+
+    def generate_candidate_trading_signals(self, data):
         """Based on parameter setting adopted in Chen et al (2021) """
-        data=data.copy()
-        conditions ={'TS1':[
-                    (data['5EMA'] > data['20EMA']),
-                    (data['5EMA'] < data['20EMA'])],
-                    'TS2':[
-                    (data['RSI'] > 30),
-                    (data['RSI'] < 70),
-                    ],
-                    'TS3':[
-                    (data['WILLR'] < 80),
-                    (data['WILLR'] > 20),
-                    ],
-                    'TS4':[
-                    (data['MOM'] > 0 ),
-                    (data['MOM'] <= 0),
-                    ],
-                    'TS5': [
-                    (data['CCI'] > 100 ),
-                    (data['CCI'] <= 100),
-                    ],
-                    'TS6': [
-                    (data['SLOWK'] > data['SLOWD']) & (data['SLOWD'] < 20),
-                    (data['SLOWK'] < data['SLOWD']) & (data['SLOWD'] > 80)],
-                    'TS7': [
-                    (data['MACD'] > 0 ),
-                    (data['MACD'] <= 0)],
-                    'TS8': [
-                    (data['CCI'] > 100 ),
-                    (data['CCI'] <= -100)]}
+        data = data.copy()
+        conditions = {
+            'TS1': [
+                (data['5EMA'].astype(float) > data['20EMA'].astype(float)),
+                (data['5EMA'].astype(float) < data['20EMA'].astype(float))
+            ],
+            'TS2': [
+                (data['RSI'].astype(float) > 30),
+                (data['RSI'].astype(float) < 70)
+            ],
+            'TS3': [
+                (data['WILLR'].astype(float) < 80),
+                (data['WILLR'].astype(float) > 20)
+            ],
+            'TS4': [
+                (data['MOM'].astype(float) > 0),
+                (data['MOM'].astype(float) <= 0)
+            ],
+            'TS5': [
+                (data['CCI'].astype(float) > 100),
+                (data['CCI'].astype(float) <= 100)
+            ],
+            'TS6': [
+                (data['SLOWK'].astype(float) > data['SLOWD'].astype(float)) & (data['SLOWD'].astype(float) < 20),
+                (data['SLOWK'].astype(float) < data['SLOWD'].astype(float)) & (data['SLOWD'].astype(float) > 80)
+            ],
+            'TS7': [
+                (data['MACD'].astype(float) > 0),
+                (data['MACD'].astype(float) <= 0)
+            ],
+            'TS8': [
+                (data['CCI'].astype(float) > 100),
+                (data['CCI'].astype(float) <= -100)
+            ],
+            'TS9': [
+                (data['ATR'].astype(float) > 0),
+                (data['ATR'].astype(float) <= 0)
+            ],
+            'TS10': [
+                (data['OBV'].astype(float) > 0),
+                (data['OBV'].astype(float) <= 0)
+            ],
+            'TS11': [
+                (data['ADOSC'].astype(float) > 0),
+                (data['ADOSC'].astype(float) <= 0)
+            ],
+            'TS12': [
+                (data['MFI'].astype(float) > 30),
+                (data['MFI'].astype(float) < 70)
+            ],
+            'TS13': [
+                (data['ROC'].astype(float) > 0),
+                (data['ROC'].astype(float) <= 0)
+            ],
+            'TS14': [
+                (data['TRIX'].astype(float) > 0),
+                (data['TRIX'].astype(float) <= 0)
+            ],
+            'TS15': [
+                (data['AROON_UP'].astype(float) > 0) & (data['AROON_DOWN'].astype(float) > 0),
+                (data['AROON_UP'].astype(float) <= 0) & (data['AROON_DOWN'].astype(float) <= 0)
+            ],
+            'TS16': [
+                (data['ADX'].astype(float) > 20),
+                (data['ADX'].astype(float) <= 20)
+            ],
+            'TS17': [
+                (data['BBANDS_UPPER'].astype(float) > data['BBANDS_LOWER'].astype(float)),
+                (data['BBANDS_UPPER'].astype(float) < data['BBANDS_LOWER'].astype(float))
+            ],
+            'TS18': [
+                (data['TRIMA'].astype(float) > data['close'].astype(float)),
+                (data['TRIMA'].astype(float) < data['close'].astype(float))
+            ],
+            'TS19': [
+                (data['SAR'].astype(float) > data['close'].astype(float)),
+                (data['SAR'].astype(float) < data['close'].astype(float))
+            ],
+            'TS20': [
+                (data['STOCHRSI_FASTK'].astype(float) > data['STOCHRSI_FASTD'].astype(float)),
+                (data['STOCHRSI_FASTK'].astype(float) < data['STOCHRSI_FASTD'].astype(float))
+            ]
+        }
 
         # create a list of the values we want to assign for each condition 1: buy, 0: sell
         values = [1, 0]
@@ -113,9 +178,8 @@ class Data:
         # create a new column and use np.select to assign values to it using our lists as arguments
         for i in conditions:
             data[i] = np.select(conditions[i], values)
-        self.strategies =list(conditions.keys())
+        self.strategies = list(conditions.keys())
         return data
-
 
 
     def data_preprocess(self):
