@@ -52,6 +52,7 @@ class Chromosome():
         self.group_part = []
         self.weight_part = []
         self.weights=[]
+        self.bbb = []
 
     def __str__(self):
         return f"SLTP: {self.sltp_part}\nGROUP: {self.group_part}\nWEIGHT: {self.weight_part}\nFITNESS: {  self.fitness_value}"
@@ -166,7 +167,7 @@ class Chromosome():
       
         
 
-    def getProfit(self,ts_data,allocated_capital):
+    def getProfit111(self,ts_data,allocated_capital):
         weights = self.getWeights()
         self.weights = weights
         total = 0
@@ -207,20 +208,23 @@ class Chromosome():
         
         # Calculate profits for each trading strategy
         ts_profits = (1 + ts_data).cumprod().iloc[-1] - 1
+        normalized_profits = (ts_profits - ts_profits.min()) / (ts_profits.max() - ts_profits.min())
         
         for i, group in enumerate(self.group_part):
-            if weights[i+1] != 0:
-                group_profits = ts_profits[group]
-                
-                # Calculate contributions for the original values
-                contribution = group_profits * weights[i+1] * allocated_capital
-                total += contribution.mean()
-                
-                # Normalize profits and calculate contributions
-                normalized_profits = (group_profits - group_profits.min()) / (group_profits.max() - group_profits.min())
-                normalized_contribution = normalized_profits * weights[i+1] * allocated_capital
-                normalised_total += normalized_contribution.mean()
-        
+            if len(group) !=0:
+                if weights[i+1] != 0:
+                    group_profits = ts_profits[group]
+                    
+                    # Calculate contributions for the original values
+                    contribution = group_profits * weights[i+1] * allocated_capital
+                    self.bbb = contribution
+                    total += contribution.mean()
+                    
+                    # Normalize profits and calculate contributions
+                    #normalized_profits = (group_profits - group_profits.min()) / (group_profits.max() - group_profits.min())
+                    normalized_contribution = normalized_profits[group] * weights[i+1] * allocated_capital
+                    normalised_total += normalized_contribution.mean()
+            
         return total, normalised_total
 
     
@@ -243,7 +247,7 @@ class Chromosome():
                 ts_mdd[j] = max_drawdown
                 tsp_mins.append(max_drawdown)
             if tsp_mins:
-                total+= min(tsp_mins)
+                total+= max(tsp_mins)
         mdd = total/len(self.group_part)
         normalised_total = 0 
         ts_mdd = self.normalisation(ts_mdd)
@@ -255,6 +259,7 @@ class Chromosome():
      
         normalised_mdd = normalised_total/len(self.group_part)
         return mdd, normalised_mdd
+    
     
     
 
@@ -416,10 +421,13 @@ class Chromosome():
         monthly_returns = self.strategy_performance(data)
         self.mdd,fit_mdd = self.getMDD(monthly_returns)
         self.profit,fit_profit =self.getProfit(monthly_returns,allocated_capital)
-        self.corr = self.getCorrelation(monthly_returns)
+        #self.corr = self.getCorrelation(monthly_returns)
         self.gb = self.groupBalance() 
         self.wb = self.weightBalance()
-        fitness = fit_profit + fit_mdd  + self.gb + self.wb #* np.power(gb,2)
+        try:
+            fitness = fit_profit * (1/ fit_mdd)  + self.gb + self.wb #* np.power(gb,2)
+        except:
+            fitness = fit_profit + self.gb + self.wb #* np.power(gb,2)
         self.fitness_value = fitness
     
     

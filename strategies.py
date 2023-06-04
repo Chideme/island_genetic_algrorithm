@@ -70,11 +70,20 @@ class Data:
         self.data['SLOWK'], self.data['SLOWD'] = ta.STOCH(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), fastk_period=14, slowk_period=3, slowd_period=3)
         self.data['MACD'], self.data['MACDSIGNAL'], self.data['MACDHIST'] = ta.MACD(np.array(self.data['close']), fastperiod=12, slowperiod=26, signalperiod=9)
         self.data['DMI'] = ta.DX(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)
+        self.data['ATR'] = ta.ATR(np.array(self.data['high']), np.array(self.data['low']), np.array(self.data['close']), timeperiod=14)
         self.data['OBV'] = ta.OBV(np.array(self.data['close'], dtype=float), np.array(self.data['volume'], dtype=float))
+        self.data['ADOSC'] = ta.ADOSC(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), np.array(self.data['close'], dtype=float), np.array(self.data['volume'], dtype=float), fastperiod=3, slowperiod=10)
         self.data['MFI'] = ta.MFI(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), np.array(self.data['close'], dtype=float), np.array(self.data['volume'], dtype=float), timeperiod=14)
+        self.data['ROC'] = ta.ROC(np.array(self.data['close'], dtype=float), timeperiod=10)
+        self.data['TRIX'] = ta.TRIX(np.array(self.data['close'], dtype=float), timeperiod=30)
+        self.data['AROON_UP'], self.data['AROON_DOWN'] = ta.AROON(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), timeperiod=14)
+        self.data['ADX'] = ta.ADX(np.array(self.data['high'], dtype=float), np.array(self.data['low'], dtype=float), np.array(self.data['close'], dtype=float), timeperiod=14)
         self.data['BBANDS_UPPER'], self.data['BBANDS_MIDDLE'], self.data['BBANDS_LOWER'] = ta.BBANDS(np.array(self.data['close'], dtype=float), timeperiod=20, nbdevup=2, nbdevdn=2)
         self.data['TRIMA'] = ta.TRIMA(np.array(self.data['close'], dtype=float), timeperiod=30)
-        
+        self.data['SAR'] = ta.SAR(np.array(self.data['high'], dtype=float), np.array(self.data['low'],), acceleration=0.02, maximum=0.2)
+        self.data['STOCHRSI_FASTK'], self.data['STOCHRSI_FASTD'] = ta.STOCHRSI(np.array(self.data['close'], dtype=float), timeperiod=14, fastk_period=5, fastd_period=3)
+
+
 
 
     def generate_candidate_trading_signals(self, data):
@@ -114,22 +123,53 @@ class Data:
                 (data['CCI'].astype(float) <= -100)
             ],
             'TS9': [
+                (data['ATR'].astype(float) > 0),
+                (data['ATR'].astype(float) <= 0)
+            ],
+            'TS10': [
                 (data['OBV'].astype(float) > 0),
                 (data['OBV'].astype(float) <= 0)
             ],
-            
-            'TS10': [
+            'TS11': [
+                (data['ADOSC'].astype(float) > 0),
+                (data['ADOSC'].astype(float) <= 0)
+            ],
+            'TS12': [
                 (data['MFI'].astype(float) > 30),
                 (data['MFI'].astype(float) < 70)
             ],
-            'TS11': [
+            'TS13': [
+                (data['ROC'].astype(float) > 0),
+                (data['ROC'].astype(float) <= 0)
+            ],
+            'TS14': [
+                (data['TRIX'].astype(float) > 0),
+                (data['TRIX'].astype(float) <= 0)
+            ],
+            'TS15': [
+                (data['AROON_UP'].astype(float) > 0) & (data['AROON_DOWN'].astype(float) > 0),
+                (data['AROON_UP'].astype(float) <= 0) & (data['AROON_DOWN'].astype(float) <= 0)
+            ],
+            'TS16': [
+                (data['ADX'].astype(float) > 20),
+                (data['ADX'].astype(float) <= 20)
+            ],
+            'TS17': [
                 (data['BBANDS_UPPER'].astype(float) > data['BBANDS_LOWER'].astype(float)),
                 (data['BBANDS_UPPER'].astype(float) < data['BBANDS_LOWER'].astype(float))
             ],
-            'TS12': [
+            'TS18': [
                 (data['TRIMA'].astype(float) > data['close'].astype(float)),
                 (data['TRIMA'].astype(float) < data['close'].astype(float))
-            ],     
+            ],
+            'TS19': [
+                (data['SAR'].astype(float) > data['close'].astype(float)),
+                (data['SAR'].astype(float) < data['close'].astype(float))
+            ],
+            'TS20': [
+                (data['STOCHRSI_FASTK'].astype(float) > data['STOCHRSI_FASTD'].astype(float)),
+                (data['STOCHRSI_FASTK'].astype(float) < data['STOCHRSI_FASTD'].astype(float))
+            ]
         }
 
         # create a list of the values we want to assign for each condition 1: buy, 0: sell

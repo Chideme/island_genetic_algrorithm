@@ -91,10 +91,10 @@ class IslandGGA():
         if self.islands:
             convergence = []
             for island in self.islands:
-                island_average_fitness = sum([chromosome.fitness_value for chromosome in island ])/len(island)
+                island_average_fitness = sum([chromosome.fitness_value for chromosome in island ])/len(island)             
                 convergence.append(island_average_fitness)
-            self.island_convergence.append(convergence)
-            self.convergence_values.append(np.average(convergence))
+            #self.island_convergence.append(convergence)
+            self.convergence_values.append(np.mean(convergence))
         else:
             average_fitness = sum([chromosome.fitness_value for chromosome in self.population ])/len(self.population)
             self.convergence_values.append(average_fitness)
@@ -470,7 +470,7 @@ class IslandGGA():
             self.islands = []
             self.get_convergence()
             self.get_global_best()
-            print(f"Generation {j}: Best fitness = {self.globalBest.fitness_value} convergence = {self.convergence_values[-1]}")
+            print(f"Generation {j}: Best fitness = {self.globalBest.fitness_value}Average fitness = {self.convergence_values[-1]}")
 
 
     def evolve(self):
