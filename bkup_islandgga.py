@@ -491,4 +491,31 @@ class EliteIslandGGA(IslandGGA):
         return elite_pop
 
 
+     def weightBalance(self):
+        weight_part = self.weight_part.copy()
+        gb = 0
+        TL = sum([i for i in self.weight_part if i == 1])
+        K = self.K+1
+        weights = {k: [] for k in range(K)}
+        for i in range(K):
+            while weight_part:
+                    x = weight_part.pop(0)
+                    if x == 0:
+                        break
+                    else:
+                        weights[i].append(x)
+        
+        for i in weights:
+            try:
+                w = len(weights[i])/TL
+            except ZeroDivisionError:
+                w = 0
+            if w !=0:
+                wb = -w * np.log(w)
+            else:
+                wb = 0
+            
+            gb += wb
+        
+        return gb
     

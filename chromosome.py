@@ -76,13 +76,11 @@ class Chromosome():
 
     def generateWeight(self):
         """Generate Weight Part and assign to groups K"""
-        weights= [1 for _ in range(self.num_weight)]
-        K = self.K
-        for i in range(K):
-            random_index = random.randrange(K)
-            weights[random_index] = 0
-        
-        self.weight_part = weights
+        weights= [random.random() for _ in range(self.K)]
+        if sum(weights) != 1.0:
+            sum_weights = sum(weights)
+            weights = [w / sum_weights for w in weights]
+        self.weight_part = [round(w,2) for w in weights]
         
     
     
@@ -165,66 +163,29 @@ class Chromosome():
             return group_weight
 
       
-        
-
-    def getProfit111(self,ts_data,allocated_capital):
-        weights = self.getWeights()
-        self.weights = weights
-        total = 0
-        ts_profits = {}
-        for i in range(len(self.group_part)):
-            group_contribution = 0
-            for j in self.group_part[i]:
-                cumulative_returns = (1 + ts_data[j]).cumprod()
-                profit = cumulative_returns.iloc[-1] - 1
-                ts_profits[j]=profit
-                contribution = profit*weights[i+1]*allocated_capital 
-                group_contribution += contribution 
-            try:   
-                total+=group_contribution/len(self.group_part[i])  
-            except:
-                total+= 0
-           
-        normalised_total = 0 
-        ts_profits = self.normalisation(ts_profits)
-        for i in range(len(self.group_part)):
-            group_contribution = 0
-            for j in self.group_part[i]:
-                if weights[i+1] !=0:
-                    normalised_profit = ts_profits[j]
-                    normalised_contribution = normalised_profit*weights[i+1]*allocated_capital
-                    group_contribution +=normalised_contribution
-            try:
-                normalised_total += group_contribution/len(self.group_part[i])  
-            except:
-                normalised_total +=0
-        
-        return total,normalised_total
     
     def getProfit(self, ts_data, allocated_capital):
-        weights = self.getWeights()
+        weights = self.weight_part
         total = 0
         normalised_total = 0
-        
         # Calculate profits for each trading strategy
         ts_profits = (1 + ts_data).cumprod().iloc[-1] - 1
         normalized_profits = (ts_profits - ts_profits.min()) / (ts_profits.max() - ts_profits.min())
         
         for i, group in enumerate(self.group_part):
             if len(group) !=0:
-                if weights[i+1] != 0:
+                if weights[i] != 0:
                     group_profits = ts_profits[group]
                     
                     # Calculate contributions for the original values
-                    contribution = group_profits * weights[i+1] * allocated_capital
+                    contribution = group_profits * weights[i] * allocated_capital
                     self.bbb = contribution
                     total += contribution.mean()
                     
                     # Normalize profits and calculate contributions
                     #normalized_profits = (group_profits - group_profits.min()) / (group_profits.max() - group_profits.min())
-                    normalized_contribution = normalized_profits[group] * weights[i+1] * allocated_capital
-                    normalised_total += normalized_contribution.mean()
-            
+                    normalized_contribution = normalized_profits[group] * weights[i] * allocated_capital
+                    normalised_total += normalized_contribution.mean() 
         return total, normalised_total
 
     
@@ -233,8 +194,10 @@ class Chromosome():
     def getMDD(self,ts_data):
         total = 0
         ts_mdd = {}
+        weights = self.weight_part
         for i in range(len(self.group_part)):
-            tsp_mins = []
+            group_mdd = []
+            weight = weights[i]
             for j in self.group_part[i]:
                 # Calculate the cumulative returns for each asset at the end of each month
                 cumulative_returns = (1+ ts_data[j]).cumprod()
@@ -245,19 +208,22 @@ class Chromosome():
                 # Calculate the maximum drawdown for each asset
                 max_drawdown = drawdown.max()
                 ts_mdd[j] = max_drawdown
-                tsp_mins.append(max_drawdown)
-            if tsp_mins:
-                total+= max(tsp_mins)
-        mdd = total/len(self.group_part)
+                group_mdd.append(max_drawdown)
+            if group_mdd:
+                contribution = np.mean(group_mdd) * weight
+                total+= np.mean(group_mdd) * weight
+        mdd = total
         normalised_total = 0 
         ts_mdd = self.normalisation(ts_mdd)
         for i in range(len(self.group_part)):
+            weight = weights[i]
             for j in self.group_part[i]:
                 normalised_mdd = ts_mdd[j]
                 normalised_contribution = normalised_mdd
-                normalised_total += normalised_contribution  
+                contribution = normalised_contribution  * weight
+                normalised_total += contribution
      
-        normalised_mdd = normalised_total/len(self.group_part)
+        normalised_mdd = normalised_total
         return mdd, normalised_mdd
     
     
@@ -298,6 +264,7 @@ class Chromosome():
             gb = 1
         return gb
     
+    
     def groupBalance(self):
         N = len(self.strategies)
         num_groups = len(self.group_part)
@@ -308,7 +275,11 @@ class Chromosome():
             g = -g_result * np.log(g_result) if g_result > 0 else 0
             gb += g
 
-        return gb / num_groups
+        max_gb = -np.log(1/num_groups) * num_groups
+        normalized_gb = gb / max_gb
+
+        return normalized_gb
+
 
     def weightBalance(self):
         weight_part = self.weight_part.copy()
@@ -423,11 +394,11 @@ class Chromosome():
         self.profit,fit_profit =self.getProfit(monthly_returns,allocated_capital)
         #self.corr = self.getCorrelation(monthly_returns)
         self.gb = self.groupBalance() 
-        self.wb = self.weightBalance()
+        #self.wb = self.weightBalance()
         try:
-            fitness = fit_profit * (1/ fit_mdd)  + self.gb + self.wb #* np.power(gb,2)
+            fitness = (fit_profit * (1/ fit_mdd))  + self.gb #+ self.wb #* np.power(gb,2)
         except:
-            fitness = fit_profit + self.gb + self.wb #* np.power(gb,2)
+            fitness = fit_profit + self.gb #+ self.wb #* np.power(gb,2)
         self.fitness_value = fitness
     
     
@@ -479,35 +450,27 @@ class Chromosome():
             child2.sltp_part = parent2.sltp_part[index:] + self.sltp_part[:index] 
         if random.random() < r_cross:
             # perform crossover on weight
-            index = random.randint(1, len(self.weight_part)-2)
-            child1.weight_part = self.weight_part[index:] + parent2.weight_part[:index] 
-            if child1.weight_part.count(0) != self.K+1:
-                child1.generateWeight()
-            child2.weight_part = parent2.weight_part[index:] + self.weight_part[:index] 
-            if child2.weight_part.count(0) != self.K+1:
-                child2.generateWeight()
+            #index = random.randint(1, len(self.weight_part)-2)
+            #child1.weight_part = self.weight_part[index:] + parent2.weight_part[:index] 
+            #if child1.weight_part.count(0) != self.K+1:
+            #    child1.generateWeight()
+            #child2.weight_part = parent2.weight_part[index:] + self.weight_part[:index] 
+            #if child2.weight_part.count(0) != self.K+1:
+            #    child2.generateWeight()
+
+            #### real valued
+            weights = [(w1 + w2) / 2.0 for w1, w2 in zip(child1.weight_part, child2.weight_part)]
+            if sum(weights) != 1.0:
+                # Apply normalization to ensure sum of weights is 1
+                sum_weights = sum(weights)
+                weights = [w / sum_weights for w in weights]
+            child1.weight_part = [round(w,2) for w in weights]
+            child1.weight_part =[round(w,2) for w in weights]
+
+        
 
         return child1,child2
-    # 2 point Crossover
-    def crossover1(self, parent2, r_cross):
-        child1 = deepcopy(self)
-        child2 = deepcopy(parent2)
-        # Check for recombination
-        if random.random() < r_cross:
-            # Select two crossover points that are not on the end of the string
-            index1 = random.randint(1, len(self.sltp_part)-2)
-            index2 = random.randint(index1+1, len(self.sltp_part)-1)
-            # Perform crossover on SLTP
-            child1.sltp_part = self.sltp_part[:index1] + parent2.sltp_part[index1:index2] + self.sltp_part[index2:]
-            child2.sltp_part = parent2.sltp_part[:index1] + self.sltp_part[index1:index2] + parent2.sltp_part[index2:]
-            # Perform crossover on weight
-            child1.weight_part = self.weight_part[:index1] + parent2.weight_part[index1:index2] + self.weight_part[index2:]
-            if child1.weight_part.count(0) != self.K+1:
-                child1.generateWeight()
-            child2.weight_part = parent2.weight_part[:index1] + self.weight_part[index1:index2] + parent2.weight_part[index2:]
-            if child2.weight_part.count(0) != self.K+1:
-                child2.generateWeight()
-        return child1, child2
+    
 
     ###Mutation
 
@@ -519,14 +482,28 @@ class Chromosome():
             if random.random() < r_mut:
             # flip the bit
                 self.sltp_part[i] = 1 - self.sltp_part[i]
+
         # on Weight Part
-        for i in range(len(self.weight_part)):
+        #for i in range(len(self.weight_part)):
+         #   if random.random() < r_mut:
+        #    # flip the bit 
+         #       self.weight_part[i] = 1 - self.weight_part[i] 
+        #    #check if condition is still maintained
+         #       if self.weight_part.count(0) != self.K+1:
+         #           self.generateWeight() 
+        mutated_weights = self.weight_part.copy()
+        for i,weight in enumerate(self.weight_part):
             if random.random() < r_mut:
-            # flip the bit 
-                self.weight_part[i] = 1 - self.weight_part[i] 
-            #check if condition is still maintained
-                if self.weight_part.count(0) != self.K+1:
-                    self.generateWeight() 
+                perturbation = random.gauss(0, 0.01)
+                weight += perturbation
+                if weight < 0:
+                    weight = 0
+                mutated_weights[i]= round(weight,2)
+        # Apply normalization to ensure sum of weights is 1
+        if sum(mutated_weights) != 1.0:
+            sum_weights = sum(mutated_weights)
+            mutated_weights = [w / sum_weights for w in mutated_weights]
+        self.weight_part = [round(w,2) for w in mutated_weights]
 
         # on TS part
         if random.random() < r_mut:
