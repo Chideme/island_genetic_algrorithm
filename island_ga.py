@@ -14,7 +14,7 @@ from copy import deepcopy
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants_rate=0.5,K=3,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring"):
+    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants_rate=0.5,K=4,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring"):
         self.data = data
         self.K = K
         self.pSize = pSize
@@ -418,7 +418,6 @@ class IslandGGA():
         self.islands = list(self.make_islands(self.population))
         #evolve
         for iteration in range(self.num_iter):
-            print(f"GENERATION {iteration} START")
             self.parallel_genetic_operations()
             if iteration % self.m_iter ==0:
                 if iteration != 0:
@@ -430,8 +429,8 @@ class IslandGGA():
                 self.population.extend(island)
             self.get_convergence()
             self.get_global_best()
-            print(f"Generation {iteration}: Best fitness = {self.globalBest.fitness_value} Average Fitness = {self.convergence_values[-1]}")
-            print(f"GENERATION {iteration} END")
+            print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value} Average Fitness = {self.convergence_values[-1]}")
+
         # Return the best individual from each island
         self.get_global_best()
         
@@ -451,7 +450,7 @@ class IslandGGA():
             self.islands =[]
             self.get_convergence()
             self.get_global_best()
-            print(f"Generation {j}: Best fitness = {self.globalBest.fitness_value} Average fitness = {self.convergence_values[-1]}")
+            print(f"Generation {j+1}: Best fitness = {self.globalBest.fitness_value} Average fitness = {self.convergence_values[-1]}")
         
             
 
@@ -470,7 +469,7 @@ class IslandGGA():
             self.islands = []
             self.get_convergence()
             self.get_global_best()
-            print(f"Generation {j}: Best fitness = {self.globalBest.fitness_value}Average fitness = {self.convergence_values[-1]}")
+            print(f"Generation {j+1}: Best fitness = {self.globalBest.fitness_value} Average fitness = {self.convergence_values[-1]}")
 
 
     def evolve(self):

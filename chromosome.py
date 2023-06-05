@@ -169,7 +169,7 @@ class Chromosome():
         total = 0
         normalised_total = 0
         # Calculate profits for each trading strategy
-        ts_profits = (1 + ts_data).cumprod().iloc[-1] - 1
+        ts_profits = (1 + ts_data).cumprod().iloc[-1] -1
         normalized_profits = (ts_profits - ts_profits.min()) / (ts_profits.max() - ts_profits.min())
         
         for i, group in enumerate(self.group_part):
