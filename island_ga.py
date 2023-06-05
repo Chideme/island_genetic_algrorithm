@@ -14,7 +14,7 @@ from copy import deepcopy
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=3,num_iter=150,pSize=100,m_iter=25,n_migrants_rate=0.5,K=4,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring"):
+    def __init__(self,data,strategies,num_islands=10,num_iter=50,pSize=100,m_iter=10,n_migrants_rate=0.5,K=4,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring"):
         self.data = data
         self.K = K
         self.pSize = pSize

@@ -7,18 +7,39 @@ import talib as ta
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-from datetime import datetime,date
+from datetime import datetime,date, timedelta
 import time
 from island_ga import IslandGGA 
 from chromosome import Chromosome 
 import itertools
 import yfinance as yf
-import datetime
+
+
+def get_last_date_of_month(year, month):
+    """Return the last date of the month.
+    
+    Args:
+        year (int): Year, i.e. 2022
+        month (int): Month, i.e. 1 for January
+
+    Returns:
+        date (datetime): Last date of the current month
+    """
+    
+    if month == 12:
+        last_date = datetime(year, month, 31)
+    else:
+        last_date = datetime(year, month + 1, 1) + timedelta(days=-1)
+    #last_date = last_date.date()
+    return last_date
+
+
+
 
 
 class Data:
 
-    def __init__(self,stock_ticker,start_date,end_date,test_period):
+    def __init__(self,stock_ticker,start_date,end_date,data_period,test_period):
         self.stock_ticker = stock_ticker
         self.start_date = start_date
         self.end_date = end_date
@@ -28,6 +49,8 @@ class Data:
         self.test_data = []
         self.conditions =[]
         self.strategies =[]
+        self.top_strategy_names=[]
+        self.data_period = data_period
 
 
     def clean(self):
@@ -140,6 +163,84 @@ class Data:
             data[i] = np.select(conditions[i], values)
         self.strategies = list(conditions.keys())
         return data
+    
+    def generate_signals(self,data,strategy):
+        
+        monthly_returns = []
+        monthly_return = 0
+        trade_freq = 0
+        monthly_freq = 0
+        market_position = 'out'
+        max_loss = 0
+        for row in data.itertuples(index=False):    
+            #close all trade positions at month end. 
+            last_date = get_last_date_of_month(row.Date.year,row.Date.month)
+            if row.Date == last_date:
+                if market_position =='in':
+                    sell_price = row.close
+                    trade_return = (sell_price - cost_price)/cost_price
+                    market_position = 'out' 
+                    trade_freq +=1
+                    monthly_freq +=1
+                    monthly_return += trade_return
+                    avg_monthly_return =monthly_return/monthly_freq
+                    monthly_returns.append(avg_monthly_return)
+                    monthly_return = 0
+                    monthly_freq = 0     
+                else:
+                    try:
+                        avg_monthly_return = monthly_return/monthly_freq
+                    except ZeroDivisionError:
+                        avg_monthly_return = 0
+                    monthly_returns.append(avg_monthly_return)
+                
+                    monthly_return = 0
+                    monthly_freq = 0         
+            else:
+                if market_position == 'out' :
+                    if row[data.columns.get_loc(strategy)] == 1:
+                        cost_price = row.close
+                        market_position = 'in'
+                        
+                else:
+                    sell_price = row.close
+                    trade_return = (sell_price - cost_price)/cost_price
+                    if trade_return <= -1 or trade_return >= 1: 
+                        trade_freq +=1
+                        monthly_freq+=1
+                        if trade_return < max_loss:
+                            max_loss = trade_return
+                        monthly_return += trade_return
+                        market_position = 'out'   
+                        
+                    if row[data.columns.get_loc(strategy)] == 0 and trade_return >= 1 :
+                        trade_freq +=1
+                        monthly_freq+=1
+                        if trade_return < max_loss:
+                            max_loss = trade_return
+                        monthly_return += trade_return
+                        market_position = 'out'
+        return monthly_returns
+
+    def strategy_performance(self):
+        if self.data_period =="train":
+            raw_data = self.train_data
+        else:
+            raw_data=self.test_data
+        strategy_performance = {}
+        for strategy in self.strategies:
+            strategy_performance[strategy] =  self.generate_signals(raw_data,strategy)
+        strategy_performance = pd.DataFrame.from_dict(strategy_performance)
+        return strategy_performance
+
+    def rank_strategies(self):
+        # Calculate profits for each trading strategy
+        ts_data = self.strategy_performance()
+        profits = (1 + ts_data).cumprod().iloc[-1] -1
+        top_strategies = profits.nlargest(12)
+        # Get the names of the top strategies
+        self.top_strategy_names = top_strategies.index.tolist()
+
 
 
     def data_preprocess(self):
@@ -148,7 +249,75 @@ class Data:
         self.split_data()
         self.train_data = self.generate_candidate_trading_signals(self.train_data)
         self.test_data = self.generate_candidate_trading_signals(self.test_data)
+        self.rank_strategies()
         self.plot_data()
 
+    ### for comparison methods
 
+    def comparison_metrics(self):
+        # Monthly returns DataFrame for each asset
+        monthly_returns = self.strategy_performance()
+        cumulative_returns = (1 + monthly_returns).cumprod()        
+        # Calculate mean cumulative returns
+        mean_cumulative_returns = cumulative_returns.mean(axis=1)
+        # Calculate portfolio performance at the end of the period
+        portfolio_return = mean_cumulative_returns.iloc[-1]-1
+        # MDD
+        cumulative_max = cumulative_returns.cummax()
+        drawdown = cumulative_max - cumulative_returns
+        max_drawdown = drawdown.max()
+        # Calculate mean Maximum Drawdown (MDD) for all groups
+        portfolio_mdd = np.mean(max_drawdown)
+        num_groups = len(self.top_strategy_names) # Number of groups
+        # Calculate equal weights for each group
+        equal_weights = 1 / num_groups
+        # Create an array of equal weights for each group
+        weights= np.full(num_groups, equal_weights)
+        covariance_matrix = monthly_returns.cov()
+        portfolio_variance = np.dot(weights.T, np.dot(covariance_matrix, weights))
+        portfolio_std_dev = np.sqrt(portfolio_variance)
+
+        ####### buy and hold
+
+       
+
+        return  print(f"Return: {portfolio_return}\nPortfolio MDD: {portfolio_mdd}\nPortfolio Std Dev: {portfolio_std_dev}")
+
+
+    def buy_and_hold(self):
+         # Load the monthly returns data.
+        if self.data_period =="train":
+            raw_data = self.train_data.copy()
+        else:
+            raw_data=self.test_data.copy()
+            
+        asset_prices = raw_data
+        # Set the 'Date' column as the index of the DataFrame if it's not already
+        asset_prices.set_index('Date', inplace=True)
+
+        # Resample the asset prices to monthly frequency and select the first and last values of each month
+        monthly_prices = asset_prices.resample('M').agg({'close': ['first', 'last']})
+
+        # Calculate the monthly returns as the percentage change in price
+        monthly_returns = monthly_prices['close', 'last'].pct_change()
+
+        # Calculate the maximum drawdown.
+
+        # Calculate the cumulative returns
+        cumulative_returns = (1 + monthly_returns).cumprod()
+        # Calculate the profit as the difference between the final cumulative return and 1 (initial investment)
+        profit = cumulative_returns.iloc[-1]-1
+
+        # Find the minimum value of the cumulative returns.
+        min_return = cumulative_returns.min()
+
+        # Calculate the maximum drawdown.
+        max_drawdown = (1 - min_return) 
+
+
+
+        # Print the the results.
+        print(f"Buy and Hold Strategy Profit: {profit:.2f}.")
+        print(f"Buy and Hold Strategy MDD   : {max_drawdown:.2f}.")
+        
         

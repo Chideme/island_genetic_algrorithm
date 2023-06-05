@@ -179,9 +179,7 @@ class Chromosome():
                     
                     # Calculate contributions for the original values
                     contribution = group_profits * weights[i] * allocated_capital
-                    self.bbb = contribution
                     total += contribution.mean()
-                    
                     # Normalize profits and calculate contributions
                     #normalized_profits = (group_profits - group_profits.min()) / (group_profits.max() - group_profits.min())
                     normalized_contribution = normalized_profits[group] * weights[i] * allocated_capital
@@ -226,44 +224,19 @@ class Chromosome():
         normalised_mdd = normalised_total
         return mdd, normalised_mdd
     
-    
-    
-
         
-    def getCorrelation(self,ts_data):
-        weights = self.getWeights()
-        self.weights = weights
-        weights_df = pd.DataFrame([weights])
-        weights_df = weights_df.drop(0,axis=1)
-        total = 0
-        combs = list(itertools.product(*self.group_part))
-        for ts in  combs:
-            tsp = ts_data[list(ts)].corr()
-            tsp_var = np.linalg.multi_dot([weights_df.to_numpy(),tsp.to_numpy(),weights_df.to_numpy().T])
-            total += tsp_var
-        try:
-            total = total.item(0)
-        except:
-            total = total
-        return total
+    def getCorrelation(self,monthly_returns):
+        weights = np.array(self.weight_part)
+        group_returns = pd.DataFrame()
+        for i, group in enumerate(self.group_part):
+             returns = monthly_returns[group].mean(axis=1)
+             group_returns[f"group {i+1}"] = returns
+        covariance_matrix = group_returns.cov()
+        portfolio_variance = np.dot(weights.T, np.dot(covariance_matrix, weights))
+        portfolio_std_dev = np.sqrt(portfolio_variance)
+        
+        return portfolio_std_dev
 
-    def groupBalance1(self):
-        N = len(self.strategies)
-        gb = 0
-        for group in self.group_part:
-            try:
-                g_result = len(group)/N
-            except ZeroDivisionError:
-                g_result = 0
-            if g_result == 0:
-                g =0
-            else:
-                g = -g_result * np.log(g_result)
-            gb += g
-        if gb == 0:
-            gb = 1
-        return gb
-    
     
     def groupBalance(self):
         N = len(self.strategies)
@@ -280,34 +253,6 @@ class Chromosome():
 
         return normalized_gb
 
-
-    def weightBalance(self):
-        weight_part = self.weight_part.copy()
-        gb = 0
-        TL = sum([i for i in self.weight_part if i == 1])
-        K = self.K+1
-        weights = {k: [] for k in range(K)}
-        for i in range(K):
-            while weight_part:
-                    x = weight_part.pop(0)
-                    if x == 0:
-                        break
-                    else:
-                        weights[i].append(x)
-        
-        for i in weights:
-            try:
-                w = len(weights[i])/TL
-            except ZeroDivisionError:
-                w = 0
-            if w !=0:
-                wb = -w * np.log(w)
-            else:
-                wb = 0
-            
-            gb += wb
-        
-        return gb
     
     def binary_to_sltp(self):
         """CONVERT SLPT Part to float"""
@@ -380,21 +325,20 @@ class Chromosome():
                         market_position = 'out'
         return monthly_returns
     
-    def strategy_performance(self,data):
+    def monthly_returns(self,data):
         chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp()
-        strategy_performance = {}
+        monthly_returns = {}
         for strategy in self.strategies:
-            strategy_performance[strategy] =  self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)
-        strategy_performance = pd.DataFrame.from_dict(strategy_performance)
-        return strategy_performance
+            monthly_returns[strategy] =  self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)
+        monthly_returns = pd.DataFrame.from_dict(monthly_returns)
+        return monthly_returns
 
     def calculate_chromosome_fitness(self,data,allocated_capital):
-        monthly_returns = self.strategy_performance(data)
+        monthly_returns = self.monthly_returns(data)
         self.mdd,fit_mdd = self.getMDD(monthly_returns)
         self.profit,fit_profit =self.getProfit(monthly_returns,allocated_capital)
         #self.corr = self.getCorrelation(monthly_returns)
         self.gb = self.groupBalance() 
-        #self.wb = self.weightBalance()
         try:
             fitness = (fit_profit * (1/ fit_mdd))  + self.gb #+ self.wb #* np.power(gb,2)
         except:
@@ -403,7 +347,7 @@ class Chromosome():
     
     
     def scale_fitness(self,max_fitness,min_fitness):
-        # Linear scaling
+        # Linear scalin
         #min_fitness = min(population_fitness)
         #max_fitness = max(population_fitness)
         shift = -min_fitness
