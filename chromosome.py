@@ -341,7 +341,7 @@ class Chromosome():
         self.gb = self.groupBalance() 
         try:
             fitness = (fit_profit * (1/ fit_mdd))  + self.gb #+ self.wb #* np.power(gb,2)
-        except:
+        except ZeroDivisionError:
             fitness = fit_profit + self.gb #+ self.wb #* np.power(gb,2)
         self.fitness_value = fitness
     
