@@ -170,21 +170,14 @@ class Chromosome():
         normalised_total = 0
         # Calculate profits for each trading strategy
         ts_profits = (1 + ts_data).cumprod().iloc[-1] -1
-        normalized_profits = (ts_profits - ts_profits.min()) / (ts_profits.max() - ts_profits.min())
-        
         for i, group in enumerate(self.group_part):
             if len(group) !=0:
                 if weights[i] != 0:
                     group_profits = ts_profits[group]
-                    
                     # Calculate contributions for the original values
                     contribution = group_profits * weights[i] * allocated_capital
-                    total += contribution.mean()
-                    # Normalize profits and calculate contributions
-                    #normalized_profits = (group_profits - group_profits.min()) / (group_profits.max() - group_profits.min())
-                    normalized_contribution = normalized_profits[group] * weights[i] * allocated_capital
-                    normalised_total += normalized_contribution.mean() 
-        return total, normalised_total
+                    total += contribution.mean()     
+        return total
 
     
 
@@ -209,20 +202,9 @@ class Chromosome():
                 group_mdd.append(max_drawdown)
             if group_mdd:
                 contribution = np.mean(group_mdd) * weight
-                total+= np.mean(group_mdd) * weight
+                total+= contribution
         mdd = total
-        normalised_total = 0 
-        ts_mdd = self.normalisation(ts_mdd)
-        for i in range(len(self.group_part)):
-            weight = weights[i]
-            for j in self.group_part[i]:
-                normalised_mdd = ts_mdd[j]
-                normalised_contribution = normalised_mdd
-                contribution = normalised_contribution  * weight
-                normalised_total += contribution
-     
-        normalised_mdd = normalised_total
-        return mdd, normalised_mdd
+        return mdd 
     
         
     def getCorrelation(self,monthly_returns):
@@ -252,6 +234,24 @@ class Chromosome():
         normalized_gb = gb / max_gb
 
         return normalized_gb
+    
+
+    def group_dispersion(self):
+        group_counts = {}
+
+        # Count the number of strategies in each group for the chromosome
+        for i ,group in enumerate(self.group_part):
+            group_counts[i] = len(group)
+        group_counts = pd.DataFrame(group_counts)
+        # Calculate the variance of the group sizes
+        variance = group_counts.var()
+
+        # Normalize the variance by the maximum possible variance
+        
+        dispersion_factor = variance 
+
+        return dispersion_factor
+
 
     
     def binary_to_sltp(self):
@@ -335,15 +335,16 @@ class Chromosome():
 
     def calculate_chromosome_fitness(self,data,allocated_capital):
         monthly_returns = self.monthly_returns(data)
-        self.mdd,fit_mdd = self.getMDD(monthly_returns)
-        self.profit,fit_profit =self.getProfit(monthly_returns,allocated_capital)
+        self.mdd= self.getMDD(monthly_returns)
+        self.profit =self.getProfit(monthly_returns,allocated_capital)
         #self.corr = self.getCorrelation(monthly_returns)
-        self.gb = self.groupBalance() 
-        try:
-            fitness = (fit_profit * (1/ fit_mdd))  + self.gb #+ self.wb #* np.power(gb,2)
-        except ZeroDivisionError:
-            fitness = fit_profit + self.gb #+ self.wb #* np.power(gb,2)
+        self.gb = self.groupBalance()
+        if self.mdd > 0.01:
+            fitness = (self.profit / self.mdd)  + self.gb 
+        else:
+            fitness = self.profit + self.gb 
         self.fitness_value = fitness
+        
     
     
     def scale_fitness(self,max_fitness,min_fitness):
@@ -352,7 +353,7 @@ class Chromosome():
         #max_fitness = max(population_fitness)
         shift = -min_fitness
         self.fitness_value += shift
-        desired_min_fitness = 0
+        desired_min_fitness = 0.1
         desired_max_fitness = 1
         a = (desired_max_fitness - desired_min_fitness) / (max_fitness - min_fitness)
         b = desired_min_fitness - a * min_fitness
