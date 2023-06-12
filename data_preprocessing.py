@@ -301,21 +301,16 @@ class Data:
         # Calculate the monthly returns as the percentage change in price
         monthly_returns = monthly_prices['close', 'last'].pct_change()
 
-        # Calculate the maximum drawdown.
-
         # Calculate the cumulative returns
         cumulative_returns = (1 + monthly_returns).cumprod()
         # Calculate the profit as the difference between the final cumulative return and 1 (initial investment)
         profit = cumulative_returns.iloc[-1]-1
+        cumulative_max = cumulative_returns.cummax()
+        drawdown = cumulative_max - cumulative_returns
+        max_drawdown = drawdown.max()
 
-        # Find the minimum value of the cumulative returns.
-        min_return = cumulative_returns.min()
 
         # Calculate the maximum drawdown.
-        max_drawdown = (1 - min_return) 
-
-
-
         # Print the the results.
         print(f"Buy and Hold Strategy Profit: {profit:.2f}.")
         print(f"Buy and Hold Strategy MDD   : {max_drawdown:.2f}.")

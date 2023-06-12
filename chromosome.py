@@ -167,7 +167,6 @@ class Chromosome():
     def getProfit(self, ts_data, allocated_capital):
         weights = self.weight_part
         total = 0
-        normalised_total = 0
         # Calculate profits for each trading strategy
         ts_profits = (1 + ts_data).cumprod().iloc[-1] -1
         for i, group in enumerate(self.group_part):
@@ -410,7 +409,7 @@ class Chromosome():
                 sum_weights = sum(weights)
                 weights = [w / sum_weights for w in weights]
             child1.weight_part = [round(w,2) for w in weights]
-            child1.weight_part =[round(w,2) for w in weights]
+            child2.weight_part =[round(w,2) for w in weights]
 
         
 
