@@ -113,13 +113,11 @@ class IslandGGA():
         #return [i for i in sorted(population, key=lambda x: x.fitness_value,reverse=True)[:N]]
 
 
-    def worst_chromosomes(self,population,N,q):
+    def worst_chromosomes(self,population,N):
         #worst = [i for i in sorted(population, key=lambda x: x.fitness_value,reverse=False)[:N]]
         worst = heapq.nsmallest(N, population, key=lambda x: x.fitness_value)
         
-        for chromosome in worst:
-            population.remove(chromosome)
-        q.put(population)
+        return worst
     
 
     #def worst_chromosomes(self, population, N, q):
@@ -364,29 +362,35 @@ class IslandGGA():
     def migrate_ring(self, left_island_index, right_island_index):
         """Perform migration among the islands in a ring topology."""
         left_queue = []
-        right_queue = []
+        #right_queue = []
         
         # Select the best individuals to migrate to the left
         left_migrants = self.select_best_chromosomes(self.islands[left_island_index], self.n_migrants)
+        #left_worst = self.worst_chromosomes(self.islands[left_island_index], self.n_migrants)
         left_queue.extend(left_migrants)
         
         # Select the best individuals to migrate to the right
-        right_migrants = self.select_best_chromosomes(self.islands[right_island_index], self.n_migrants)
-        right_queue.extend(right_migrants)
+        #right_migrants = self.select_best_chromosomes(self.islands[right_island_index], self.n_migrants)
+        right_worst =  self.worst_chromosomes(self.islands[right_island_index], self.n_migrants)
+        #right_queue.extend(right_migrants)
         
         # Send and receive migrants
         for _ in range(self.n_migrants):
             # Send an individual to the left
+            if right_worst:
+                w = right_worst.pop()
+                self.islands[right_island_index].remove(w)
             if left_queue:
                 ind = left_queue.pop()
-                self.islands[left_island_index].remove(ind)
+                #self.islands[left_island_index].remove(ind)
                 self.islands[right_island_index].append(ind)
             
+            
             # Send an individual to the right
-            if right_queue:
-                ind = right_queue.pop()
-                self.islands[right_island_index].remove(ind)
-                self.islands[left_island_index].append(ind)
+            #if right_queue:
+            #    ind = right_queue.pop()
+            #    self.islands[right_island_index].remove(ind)
+            #   self.islands[left_island_index].append(ind)
 
     def migration(self):
         """Perform island migrations"""
@@ -394,6 +398,7 @@ class IslandGGA():
         for i in range(self.num_islands):
             left_island_index = (i - 1) % self.num_islands
             right_island_index = (i + 1) % self.num_islands
+            
             print(f"Island {i} Migration -Left island {left_island_index} -Right island {right_island_index}")
             if self.evolve_strategy =="ring":
                 self.migrate_ring(left_island_index, right_island_index)
