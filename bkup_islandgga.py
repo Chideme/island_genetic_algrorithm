@@ -491,7 +491,7 @@ class EliteIslandGGA(IslandGGA):
         return elite_pop
 
 
-     def weightBalance(self):
+    def weightBalance(self):
         weight_part = self.weight_part.copy()
         gb = 0
         TL = sum([i for i in self.weight_part if i == 1])

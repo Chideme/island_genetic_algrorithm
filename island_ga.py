@@ -10,11 +10,11 @@ import matplotlib.pyplot as plt
 from datetime import datetime,date, timedelta
 from chromosome import Chromosome
 from copy import deepcopy
-
+import time
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=10,num_iter=50,pSize=100,m_iter=10,n_migrants_rate=0.5,K=4,r_cross=0.1,r_mut=0.01,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring"):
+    def __init__(self,data,strategies,num_islands=8,num_iter=50,pSize=100,m_iter=5,n_migrants_rate=0.5,K=4,r_cross=0.1,r_mut=0.1,r_inv=0.2,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring"):
         self.data = data
         self.K = K
         self.pSize = pSize
@@ -40,6 +40,7 @@ class IslandGGA():
         self.best_individuals = []
         self.globalBest  = []
         self.convergence_values = []
+        self.convergence_times = []
         self.island_convergence = []
         self.population = []
 
@@ -48,6 +49,7 @@ class IslandGGA():
         self.best_individuals = []
         self.globalBest  = []
         self.convergence_values = []
+        self.convergence_times = []
         self.population = []
 
     def init_population(self):
@@ -98,6 +100,8 @@ class IslandGGA():
         else:
             average_fitness = sum([chromosome.fitness_value for chromosome in self.population ])/len(self.population)
             self.convergence_values.append(average_fitness)
+
+            
         
 ######## MIGRATION
 
@@ -414,6 +418,7 @@ class IslandGGA():
         """island implementation"""
         print(f"Running {self.evolve_strategy}")
         self.re_init()
+        start_time = time.time()
         #intiate population
         self.population = self.init_population()
         self.update_pop_fitness_values(self.population)
@@ -431,6 +436,7 @@ class IslandGGA():
             for island in self.islands:
                 self.population.extend(island)
             self.get_convergence()
+            self.convergence_times.append(time.time() - start_time)
             self.get_global_best()
             print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value}  Average Fitness = {self.convergence_values[-1]}")
 
@@ -443,6 +449,7 @@ class IslandGGA():
         print(f"Running {self.evolve_strategy}")
         # Reinitiate evolution values
         self.re_init()
+        start_time = time.time()
         self.population = self.init_population()
         self.globalBest = deepcopy(self.population[0])
         self.population = self.master_fitness_function()
@@ -452,6 +459,7 @@ class IslandGGA():
             # Calculate average fitness value for convergence
             self.islands =[]
             self.get_convergence()
+            self.convergence_times.append(time.time() - start_time)
             self.get_global_best()
             print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value}  Average Fitness = {self.convergence_values[-1]}")
             
@@ -461,6 +469,7 @@ class IslandGGA():
         print(f"Running {self.evolve_strategy}")
         # Reinitiate evolution values
         self.re_init()
+        start_time = time.time()
         self.population = self.init_population()
         self.globalBest = deepcopy(self.population[0])
         self.population = self.update_pop_fitness_values(self.population)
@@ -470,10 +479,12 @@ class IslandGGA():
             # Calculate average fitness value for convergence
             self.islands = []
             self.get_convergence()
+            self.convergence_times.append(time.time() - start_time)
             self.get_global_best()
             print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value}  Average Fitness = {self.convergence_values[-1]}")
 
     def evolve(self):
+        
         """evolve based on strategy"""
         if self.evolve_strategy == "master_slave":
             self.evolve_master_slave()
@@ -481,7 +492,7 @@ class IslandGGA():
             self.evolve_gga()
         else:
             self.evolve_parallel()
-
+        
     
 
     

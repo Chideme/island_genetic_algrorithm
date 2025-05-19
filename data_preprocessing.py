@@ -53,11 +53,35 @@ class Data:
         self.data_period = data_period
 
 
-    def clean(self):
+    def clean1(self):
         self.data =self.data.reset_index()
         self.data = self.data.sort_values('Date')
         # Convert the 'Date' column to datetime format
         self.data['Date'] = pd.to_datetime(self.data['Date'])
+
+    def clean(self):
+        # Remove rows with any NaN values
+        df = self.data
+        df = df.dropna()
+        
+        # Replace infinite values with NaN and then drop those rows
+        #df = df.replace([np.inf, -np.inf], np.nan).dropna()
+        
+        # Remove columns with zero variance
+        #zero_var_cols = df_clean.columns[df_clean.std() == 0]
+        #df_clean = df_clean.drop(columns=zero_var_cols)
+        # Fix multi-index columns (if applicable)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)  # Keep only the second level (actual column names)
+
+        # Reset index to move 'Date' from index to column
+        df.reset_index(inplace=True)
+        df = df.rename(columns={
+                            'Close': 'close', 'Volume': 'volume',
+                            'Open': 'open', 'High': 'high', 'Low': 'low'
+                        })
+        self.data = df
+    
 
     def split_data(self):
         self.train_data = self.data[self.data['Date'].dt.year < self.test_period]
@@ -71,8 +95,8 @@ class Data:
         plt.plot(self.test_data['Date'], self.test_data['close'], color='red', label='Test')
 
         plt.xlabel('Date')
-        plt.ylabel('Close')
-        plt.title('Close Price Over Time')
+        plt.ylabel('Close Price')
+        #plt.title('Close Price Over Time')
         plt.xticks(rotation=45)  # Rotate x-axis labels for better readability
         plt.tight_layout()
         plt.legend()
@@ -80,7 +104,7 @@ class Data:
     
     def create_signals(self):
         # Rename columns to remove spaces in column names
-        self.data = self.data.rename(columns={'Close': 'close', 'Volume': 'volume', 'Open': 'open', 'High': 'high', 'Low': 'low'})
+        #self.data = self.data.rename(columns={'Close': 'close', 'Volume': 'volume', 'Open': 'open', 'High': 'high', 'Low': 'low'})
         # Change date string into date format and sort the dataframe in ascending order
 
         # Create signals using Talib library
