@@ -362,6 +362,58 @@ class IslandGGA():
                 self.islands[left_island_index].append(ind_j)
                 self.islands[right_island_index].append(ind_i)
 
+    def migrate_fully_connected(self):
+        """Each island sends migrants to all other islands."""
+        for i in range(self.num_islands):
+            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
+
+            for j in range(self.num_islands):
+                if i != j:
+                    # Remove migrants from source and add to target
+                    for ind in migrants:
+                        if ind in self.islands[i]:  # Prevent duplicate migration
+                            self.islands[i].remove(ind)
+                            self.islands[j].append(ind.clone())  # Use copy if needed
+
+    def migrate_star(self):
+        """Perform star topology migration with island 0 as the hub."""
+        hub = 0
+        hub_migrants = []
+
+        # Spokes send migrants to the hub
+        for i in range(1, self.num_islands):
+            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
+            for ind in migrants:
+                if ind in self.islands[i]:
+                    self.islands[i].remove(ind)
+                    hub_migrants.append(ind)
+
+        # Add to the hub
+        self.islands[hub].extend(hub_migrants)
+
+        # Hub sends back best migrants to each spoke
+        for i in range(1, self.num_islands):
+            migrants = self.select_best_chromosomes(self.islands[hub], self.n_migrants)
+            for ind in migrants:
+                if ind in self.islands[hub]:
+                    self.islands[hub].remove(ind)
+                    self.islands[i].append(ind.clone())
+
+
+
+    def migrate_random(self):
+        """Each island sends migrants to a randomly selected island."""
+        for i in range(self.num_islands):
+            target = random.choice([j for j in range(self.num_islands) if j != i])
+            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
+
+            for ind in migrants:
+                if ind in self.islands[i]:
+                    self.islands[i].remove(ind)
+                    self.islands[target].append(ind.clone())
+
+
+
 
     def migrate_ring(self, left_island_index, right_island_index):
         """Perform migration among the islands in a ring topology."""
@@ -396,7 +448,7 @@ class IslandGGA():
                self.islands[right_island_index].remove(ind)
                self.islands[left_island_index].append(ind)
 
-    def migration(self):
+    def migration1(self):
         """Perform island migrations"""
         # Perform migration among islands in a ring topology
         for i in range(self.num_islands):
@@ -412,6 +464,30 @@ class IslandGGA():
                 self.migrate_nearest(left_island_index, right_island_index)
             #best = heapq.nlargest(1, self.islands[i], key=lambda x: x.fitness_value)[0]
             #print(f"Island {i} - Generation {iteration}: Best fitness = {best.fitness_value}")
+
+
+    def migration(self):
+        """Perform island migrations"""
+        for i in range(self.num_islands):
+            left = (i - 1) % self.num_islands
+            right = (i + 1) % self.num_islands
+
+            print(f"Island {i} Migration - Left {left} - Right {right}")
+
+        if self.evolve_strategy == "ring":
+            for i in range(self.num_islands):
+                self.migrate_ring(i, (i + 1) % self.num_islands)
+        elif self.evolve_strategy == "multikuti":
+            self.multikuti_migration()
+        elif self.evolve_strategy == "nearest":
+            self.migrate_nearest()
+        elif self.evolve_strategy == "star":
+            self.migrate_star()
+        elif self.evolve_strategy == "random":
+            self.migrate_random()
+        elif self.evolve_strategy == "fully_connected":
+            self.migrate_fully_connected()
+
 
 
     def evolve_parallel(self):
