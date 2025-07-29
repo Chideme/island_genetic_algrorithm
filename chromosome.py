@@ -90,6 +90,20 @@ class Chromosome():
         self.generateGroup()
         self.generateWeight()
         return self
+    
+    def decode_weights(self):
+        weight_part_length = self.K * self.num_weight
+        weights = []
+        for i in range(0, weight_part_length, self.num_weight):
+            gene = self.weight_part[i:i + self.num_weight]
+            weight = sum(b * 2**idx for idx, b in enumerate(reversed(gene))) / (2 ** self.num_weight - 1)
+            weights.append(weight)
+        # Convert to NumPy array and ensure weights sum to 1
+        if sum(weights) == 0:
+            weights = np.full(self.K, 0.125)
+        weights = np.array(weights) / sum(weights) 
+        rounded_weights = np.round(weights, 3)
+        return rounded_weights
         
 
     #Fitness Function
@@ -331,10 +345,54 @@ class Chromosome():
             monthly_returns[strategy] =  self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)
         monthly_returns = pd.DataFrame.from_dict(monthly_returns)
         return monthly_returns
+    
+    def get_gstp_mdd(self,tsps):
+        """Calculate the MDD for the GTSP"""
+        #max_index= tsps['profit'].idxmax()
+        #mdd  = tsps.loc[max_index, 'MDD']
+       
+        mdd= tsps['MDD'].mean()
+        return mdd
+    
+    def get_gstp_profit(self, tsps):
+        """Calculate the profit for the GTSP"""
+        #tsps['Profit'].mean()
+        #max_index= tsps['SharpeRatio'].idxmax()
+        #profit  = tsps.loc[max_index, 'Profit']
 
-    def calculate_chromosome_fitness(self,data,allocated_capital):
+       
+        profit = tsps['Profit'].mean()
+        return profit
+    
+    
+    
+    def calculate_profit(self,portfolio,monthly_returns):
+        """Calculate the profit for a Portfolio (TSP)"""
+        weights =  self.decode_weights()
+        cumulative_returns =  (1 + monthly_returns[list(portfolio)]).cumprod().iloc[-1]-1
+        final_portfolio_return = (cumulative_returns * weights).sum()
+    
+        return final_portfolio_return
+    
+    def calculate_mdd(self,portfolio,monthly_returns):
+        """Calculate the mdd for a Portfolio (TSP)"""
+        weighted_returns = pd.DataFrame()
+        weights =  self.decode_weights()
+        for i, strategy in enumerate(portfolio):
+            weighted_returns[strategy] = monthly_returns[strategy]* weights[i]
+        # Calculate the combined weighted returns for the portfolio
+        portfolio_returns = weighted_returns.sum(axis=1) 
+        cumulative_returns = (1+ portfolio_returns ).cumprod()
+        # Calculate the cumulative maximum value for each asset at the end of each month
+        previous_peaks = cumulative_returns.cummax()
+        drawdowns = (cumulative_returns - previous_peaks) / (1 + previous_peaks)
+        mdd = drawdowns.min()
+        return mdd
+
+    def calculate_chromosome_fitness1(self,data,allocated_capital):
         monthly_returns = self.monthly_returns(data)
-        self.mdd= self.getMDD(monthly_returns)
+        #self.mdd= self.getMDD(monthly_returns)
+        self.mdd
         self.profit =self.getProfit(monthly_returns,allocated_capital)
         #self.corr = self.getCorrelation(monthly_returns)
         self.gb = self.groupBalance()
@@ -343,7 +401,39 @@ class Chromosome():
         else:
             fitness = self.profit + self.gb 
         self.fitness_value = fitness
+
+    def calculate_chromosome_fitness(self,monthly_returns,allocated_capital):
         
+       
+        mean_return = monthly_returns.mean()
+        #std_dev = monthly_returns.std()
+        # Initialize an empty DataFrame without the profit column
+        
+        # Calculate Sharpe ratio for each asset
+        risk_free_rate = 0.0 # Replace with the appropriate risk-free rate
+        #sharpe_ratio = (mean_return - risk_free_rate) / std_dev
+
+        # Create a DataFrame of Sharpe ratios
+        sharpe_df = pd.DataFrame(mean_return, columns=['mean_return'])
+        portfolio = []
+        for group in self.group_part:
+            df = sharpe_df.loc[group]
+            max_index = df['mean_return'].idxmax()
+            portfolio.append(max_index)
+        portfolio = [portfolio]
+        tsps = pd.DataFrame({'Portfolio': portfolio})
+        tsps['Profit'] = tsps['Portfolio'].apply(lambda portfolio: self.calculate_profit(portfolio, monthly_returns))
+        tsps['MDD'] = tsps['Portfolio'].apply(lambda portfolio: self.calculate_mdd(portfolio, monthly_returns))
+        self.mdd= self.get_gstp_mdd(tsps)
+        self.profit =self.get_gstp_profit(tsps)
+        self.gb = self.groupBalance()
+        if self.mdd > 0.01:
+            fitness = (self.profit / self.mdd)  + self.gb 
+        else:
+            fitness = self.profit + self.gb 
+        self.fitness_value = fitness
+        self.tsps = tsps
+    
     
     
     def scale_fitness(self,max_fitness,min_fitness):

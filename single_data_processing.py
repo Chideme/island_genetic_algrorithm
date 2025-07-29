@@ -4,6 +4,7 @@ import yfinance as yf
 import talib as ta
 from datetime import datetime
 import matplotlib.pyplot as plt
+from itertools import product
 
 
 def clean_financial_data(df):
@@ -29,13 +30,18 @@ class SingleAssetTI:
         self.start_date = start_date
         self.end_date = end_date
         self.test_period = test_period
-        self.data = self.load_and_prepare_data()
+        self.data = self.load_and_prepare_data().copy()
         self.train = self.data[self.data['Date'].dt.year < self.test_period]
         self.test= self.data[self.data['Date'].dt.year >= self.test_period]
         self.strategy_results = {}
+        self.strategy_returns = {}
+        self.strategy_performance = {}
 
     def load_and_prepare_data(self):
         df = yf.download(self.ticker, start=self.start_date, end=self.end_date)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0) 
+        df.reset_index(inplace=True)
         df = df.rename(columns={
             'Close': 'close', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Volume': 'volume'
         }).dropna()
@@ -111,7 +117,8 @@ class SingleAssetTI:
             lambda d: d['CCI'].astype(float) <= 100
         ]
 
-        strategy_combinations = list(zip(buying_indicators, selling_indicators))
+        #strategy_combinations = list(zip(buying_indicators, selling_indicators))
+        strategy_combinations = list(product(buying_indicators, selling_indicators))
 
         # Optionally expand to 50 strategies with more combinations
         # You can uncomment below and add more logic-based combinations if needed
@@ -122,8 +129,10 @@ class SingleAssetTI:
         #     ))
 
         strategy_id = 1
+        self.strategies =[]
         for buy, sell in strategy_combinations:
             strat_name = f"TS{strategy_id}"
+            self.strategies.append(strat_name)
             try:
                 sharpe, returns = self.evaluate_strategy(processed_data, buy(processed_data), sell(processed_data))
                 self.strategy_performance[strat_name] = {
@@ -200,7 +209,7 @@ class SingleAssetTI:
     
     def data_preprocess(self):
         
-        self.train_data = self.generate_strategies(self.train_data)
-        self.test_data = self.generate_test_returns(self.test_data)
+        self.train_data = self.generate_strategies(self.train.copy())
+        self.test_data = self.generate_test_returns(self.test.copy())
         #self.rank_strategies()
         self.plot_data()

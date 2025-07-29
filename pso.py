@@ -1,252 +1,145 @@
 import numpy as np
 import pandas as pd
-import random
-from datetime import datetime
 
-
-def get_last_date_of_month(year, month):
-    """Helper to find the last date of a month."""
-    if month == 12:
-        return datetime(year + 1, 1, 1) - pd.Timedelta(days=1)
-    else:
-        return datetime(year, month + 1, 1) - pd.Timedelta(days=1)
-
-class PSOPortfolioOptimizer:
-    def __init__(self, data, strategies, num_particles=30, iterations=30, 
-                 inertia_weight=0.7, cognitive_weight=2.5, social_weight=2.5):
-        self.data = data
-        self.returns_df = data  # monthly returns
-        self.strategies = strategies
-        self.n = len(strategies)
-        self.k = len(strategies)  # selects all by default; adjust for sparse
+class PortfolioPSO:
+    def __init__(self, returns_df, num_assets_to_select=None, num_particles=50, iterations=100, 
+                 inertia_weight=0.7, cognitive_weight=1.5, social_weight=1.5):
+        self.returns_df = returns_df
+        self.n_assets = returns_df.shape[1]
+        self.k = num_assets_to_select if num_assets_to_select else self.n_assets
         self.num_particles = num_particles
         self.iterations = iterations
-        self.w = inertia_weight
-        self.c1 = cognitive_weight
-        self.c2 = social_weight
-
-        self.particles = self._init_particles()
-        self.velocities = np.zeros_like(self.particles)
-
-        self.pbest = self.particles.copy()
-        self.pbest_fitness = np.array([self._fitness_function(p) for p in self.particles])
-        self.gbest_index = np.argmax(self.pbest_fitness)
-        self.gbest = self.pbest[self.gbest_index].copy()
-        self.gbest_fitness = self.pbest_fitness[self.gbest_index]
-
+        self.w = inertia_weight  # Inertia weight
+        self.c1 = cognitive_weight  # Cognitive weight
+        self.c2 = social_weight  # Social weight
+        
+        # Initialize particles
+        self.particles = self._initialize_particles()
+        self.velocities = np.zeros((num_particles, self.n_assets * 2))
+        
+        # Initialize best positions
+        self.personal_best_positions = self.particles.copy()
+        self.personal_best_fitness = np.array([self._fitness_function(p) for p in self.particles])
+        
+        # Initialize global best
+        self.global_best_idx = np.argmax(self.personal_best_fitness)
+        self.global_best_position = self.personal_best_positions[self.global_best_idx].copy()
+        self.global_best_fitness = self.personal_best_fitness[self.global_best_idx]
+        
+        # Store results
         self.fitness_history = []
-        self.gbest_profit = 0
-        self.gbest_mdd = 0
+        self.best_portfolio = None
+        self.best_weights = None
 
-    def _init_particles(self):
-        particles = []
-        for _ in range(self.num_particles):
-            selection = np.zeros(self.n)
-            selected_idx = np.random.choice(self.n, self.k, replace=False)
-            selection[selected_idx] = 1
-            weights = np.random.rand(self.n)
+    def _initialize_particles(self):
+        particles = np.zeros((self.num_particles, self.n_assets * 2))
+        
+        for i in range(self.num_particles):
+            # Initialize selection part
+            selection = np.zeros(self.n_assets)
+            selected_indices = np.random.choice(range(self.n_assets), self.k, replace=False)
+            selection[selected_indices] = 1
+            
+            # Initialize weights part
+            weights = np.random.uniform(0, 1, self.n_assets)
             weights[selection == 0] = 0
-            weights = weights / weights.sum()
-            particle = np.concatenate((selection, weights))
-            particles.append(particle)
-        return np.array(particles)
+            weights[selection == 1] /= weights[selection == 1].sum()
+            
+            # Combine selection and weights
+            particles[i] = np.concatenate((selection, weights))
+            
+        return particles
 
-    def _decode(self, particle):
-        selection = particle[:self.n].round().astype(int)
-        weights = particle[self.n:]
-        weights[selection == 0] = 0
-        if weights.sum() == 0:
-            weights[selection == 1] = 1 / max(selection.sum(), 1)
-        else:
-            weights = weights / weights.sum()
+    def _decode_particle(self, particle):
+        selection = particle[:self.n_assets].astype(int)
+        weights = particle[self.n_assets:]
         return selection, weights
 
-
-    def _get_profit(self, returns):
-        if returns.max() > 1:
-            print("‼️ Unrealistic monthly return > 100% detected")
-        return (1 + returns).cumprod().iloc[-1] - 1
-
-    def _get_mdd(self, returns):
-        cumulative = (1 + returns).cumprod()
-        peak = cumulative.cummax()
-        drawdown = (peak - cumulative)
-        return drawdown.max()
-
-    
-
-    def _fix(self, particle):
-        selection = particle[:self.n].round().astype(int)
-        weights = particle[self.n:]
-        # Fix selection size
-        while selection.sum() > self.k:
-            idx = np.random.choice(np.where(selection == 1)[0])
-            selection[idx] = 0
-        while selection.sum() < self.k:
-            idx = np.random.choice(np.where(selection == 0)[0])
-            selection[idx] = 1
-        # Fix weights
-        weights[selection == 0] = 0
-        if weights.sum() > 0:
-            weights = weights / weights.sum()
-        else:
-            weights[selection == 1] = 1 / self.k
-        return np.concatenate([selection, weights])
-    
-
-    def _generate_trading_signal1(self, data, strategy):
-        monthly_returns = []
-        monthly_return = 0
-        monthly_freq = 0
-        market_position = 'out'
-
-        for row in data.itertuples(index=False):
-            last_date = get_last_date_of_month(row.Date.year, row.Date.month)
-            if row.Date == last_date:
-                if market_position == 'in':
-                    sell_price = row.close
-                    trade_return = (sell_price - cost_price) / cost_price
-                    monthly_return += trade_return
-                    monthly_freq += 1
-                    market_position = 'out'
-                try:
-                    avg_return = monthly_return / monthly_freq
-                except ZeroDivisionError:
-                    avg_return = 0
-                monthly_returns.append(avg_return)
-                monthly_return = 0
-                monthly_freq = 0
-            else:
-                if market_position == 'out' and row._asdict()[strategy] == 1:
-                    cost_price = row.close
-                    market_position = 'in'
-                elif market_position == 'in':
-                    sell_price = row.close
-                    trade_return = (sell_price - cost_price) / cost_price
-                    if row._asdict()[strategy] == 0:
-                        monthly_return += trade_return
-                        monthly_freq += 1
-                        market_position = 'out'
-        if not monthly_returns:
-            print(f"⚠️  Strategy '{strategy}' returned empty monthly returns.")
-        elif any(np.isnan(x) for x in monthly_returns):
-            print(f"⚠️  Strategy '{strategy}' returned NaN in monthly returns.")
-        return monthly_returns
-    
-    def _generate_trading_signal(self, data, strategy):
-        monthly_returns = []
-        trade_returns = []
-        market_position = 'out'
-
-        for row in data.itertuples(index=False):
-            last_date = get_last_date_of_month(row.Date.year, row.Date.month)
-            strategy_signal = row._asdict()[strategy]
-
-            if market_position == 'out' and strategy_signal == 1:
-                cost_price = row.close
-                market_position = 'in'
-
-            elif market_position == 'in':
-                sell_price = row.close
-                trade_return = (sell_price - cost_price) / cost_price
-                if strategy_signal == 0 or row.Date == last_date:
-                    trade_returns.append(trade_return)
-                    market_position = 'out'
-
-            if row.Date == last_date:
-                if trade_returns:
-                    monthly_return = np.prod([1 + r for r in trade_returns]) - 1
-                else:
-                    monthly_return = 0
-                monthly_returns.append(monthly_return)
-                trade_returns = []
-
-        return monthly_returns
-
-
-    
-
-    def _portfolio_monthly_returns(self, selection, weights):
-        selected_strategies = [s for s, sel in zip(self.strategies, selection) if sel == 1]
-        if not selected_strategies:
-            return pd.Series([0])
-
-        returns = {}
-        for strategy in selected_strategies:
-            returns[strategy] = self._generate_trading_signal(self.data, strategy)
-        df = pd.DataFrame.from_dict(returns)
-        # Align weight length to selected strategies
-        selected_weights = weights[selection == 1]
-        selected_weights = selected_weights / selected_weights.sum()
-        portfolio_return = df.dot(selected_weights)
-        if portfolio_return.isnull().all():
-            print("⚠️  Portfolio returns are all NaN")
-            print("Selected strategies:", selected_strategies)
-            print("Return DataFrame:\n", df)
-            print("Selected weights:", selected_weights)
-
-        return portfolio_return
+    def calculate_sharpe_ratio(self, returns, risk_free_rate=0.0):
+        excess_returns = returns - risk_free_rate
+        return excess_returns.mean() / excess_returns.std() if excess_returns.std() != 0 else 0
 
     def _fitness_function(self, particle):
-        selection, weights = self._decode(particle)
-        portfolio_returns = self._portfolio_monthly_returns(selection, weights)
-        profit = self._get_profit(portfolio_returns)
-        mdd = self._get_mdd(portfolio_returns)
-        if mdd is None or np.isnan(mdd) or mdd <= 0.01:
-            return profit
+        selection, weights = self._decode_particle(particle)
+        selected_assets = self.returns_df.columns[selection == 1]
+        selected_weights = weights[np.where(selection == 1)[0]]
+        
+        # Ensure non-negative weights
+        selected_weights = np.maximum(selected_weights, 0)
+        
+        # Normalize weights to sum to 1
+        total_weight = np.sum(selected_weights)
+        if total_weight > 0:
+            selected_weights /= total_weight
         else:
-            return profit / mdd
+            selected_weights = np.ones_like(selected_weights) / len(selected_weights)
+        
+        # Compute portfolio returns
+        selected_returns = self.returns_df[selected_assets].dot(selected_weights).dropna()
+        
+        # Calculate Sharpe ratio
+        return self.calculate_sharpe_ratio(selected_returns)
 
+    def _fix_particle(self, particle):
+        selection = particle[:self.n_assets].astype(int)
+        
+        # Fix selection part
+        selection = np.round(selection)  # Convert to binary
+        while selection.sum() > self.k:
+            selection[np.random.choice(np.where(selection == 1)[0])] = 0
+        while selection.sum() < self.k:
+            selection[np.random.choice(np.where(selection == 0)[0])] = 1
+            
+        # Fix weights part
+        weights = particle[self.n_assets:]
+        weights = np.maximum(weights, 0)  # Ensure non-negative weights
+        weights[selection == 0] = 0  # Zero weights for non-selected assets
+        
+        # Normalize weights for selected assets
+        selected_sum = weights[selection == 1].sum()
+        if selected_sum > 0:
+            weights[selection == 1] /= selected_sum
+            
+        return np.concatenate((selection, weights))
 
+    def update_particle(self, particle_idx):
+        # Update velocity
+        r1, r2 = np.random.rand(2)
+        cognitive_component = self.c1 * r1 * (self.personal_best_positions[particle_idx] - self.particles[particle_idx])
+        social_component = self.c2 * r2 * (self.global_best_position - self.particles[particle_idx])
+        self.velocities[particle_idx] = (self.w * self.velocities[particle_idx] + 
+                                       cognitive_component + social_component)
+        
+        # Update position
+        self.particles[particle_idx] += self.velocities[particle_idx]
+        
+        # Fix particle to maintain constraints
+        self.particles[particle_idx] = self._fix_particle(self.particles[particle_idx])
+        
+        # Update personal best
+        current_fitness = self._fitness_function(self.particles[particle_idx])
+        if current_fitness > self.personal_best_fitness[particle_idx]:
+            self.personal_best_positions[particle_idx] = self.particles[particle_idx].copy()
+            self.personal_best_fitness[particle_idx] = current_fitness
+            
+            # Update global best
+            if current_fitness > self.global_best_fitness:
+                self.global_best_position = self.particles[particle_idx].copy()
+                self.global_best_fitness = current_fitness
 
     def run(self):
-        for _ in range(self.iterations):
+        for iteration in range(self.iterations):
+            # Update all particles
             for i in range(self.num_particles):
-                r1, r2 = np.random.rand(2)
-                cognitive = self.c1 * r1 * (self.pbest[i] - self.particles[i])
-                social = self.c2 * r2 * (self.gbest - self.particles[i])
-                self.velocities[i] = self.w * self.velocities[i] + cognitive + social
-                self.particles[i] += self.velocities[i]
-                self.particles[i] = self._fix(self.particles[i])
-                fit = self._fitness_function(self.particles[i])
-                if fit > self.pbest_fitness[i]:
-                    self.pbest[i] = self.particles[i].copy()
-                    self.pbest_fitness[i] = fit
-                    if fit > self.gbest_fitness:
-                        self.gbest = self.particles[i].copy()
-                        self.gbest_fitness = fit
-            self.fitness_history.append(self.gbest_fitness)
-
-        # Decode gbest and compute final metrics
-        selection, weights = self._decode(self.gbest)
-        returns = self._portfolio_monthly_returns(selection, weights)
-        self.gbest_profit = self._get_profit(returns)
-        self.gbest_mdd = self._get_mdd(returns)
-        return self.gbest_profit, self.gbest_mdd, self.gbest_fitness
-
-    def evaluate_on_data(self, data):
-        selection, weights = self._decode(self.gbest)
-        selected_strategies = [s for s, sel in zip(self.strategies, selection) if sel == 1]
-        selected_weights = weights[selection == 1]
-
-        if not selected_strategies:
-            return 0, 0, 0
-
-        # Normalize weights
-        selected_weights /= selected_weights.sum()
-
-        # Step 1: Compute monthly returns per selected strategy
-        monthly_returns = {}
-        for strategy in selected_strategies:
-            monthly_returns[strategy] = self._generate_trading_signal(data, strategy)
-
-        monthly_df = pd.DataFrame(monthly_returns)
-
-        # Step 2: Compute portfolio returns
-        portfolio_returns = monthly_df.dot(selected_weights)
-
-        # Step 3: Compute metrics
-        profit = self._get_profit(portfolio_returns)
-        mdd = self._get_mdd(portfolio_returns)
-        fitness = profit / mdd if mdd > 0.01 else profit
-        return profit, mdd, fitness
+                self.update_particle(i)
+            
+            # Store average fitness for this iteration
+            current_fitness = np.mean([self._fitness_function(p) for p in self.particles])
+            self.fitness_history.append(current_fitness)
+        
+        # Get final best portfolio
+        selection, weights = self._decode_particle(self.global_best_position)
+        self.best_portfolio = self.returns_df.columns[selection == 1].tolist()
+        self.best_weights = weights[selection == 1].tolist()
+        
+        return self.best_portfolio, self.best_weights, self.fitness_history
