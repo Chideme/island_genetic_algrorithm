@@ -469,24 +469,24 @@ class IslandGGA():
     def migration(self):
         """Perform island migrations"""
         for i in range(self.num_islands):
-            left = (i - 1) % self.num_islands
-            right = (i + 1) % self.num_islands
+            left_island_index = (i - 1) % self.num_islands
+            right_island_index = (i + 1) % self.num_islands
 
-            print(f"Island {i} Migration - Left {left} - Right {right}")
+            print(f"Island {i} Migration - Left {left_island_index} - Right {right_island_index}")
 
-        if self.evolve_strategy == "ring":
-            for i in range(self.num_islands):
-                self.migrate_ring(i, (i + 1) % self.num_islands)
-        elif self.evolve_strategy == "multikuti":
-            self.multikuti_migration()
-        elif self.evolve_strategy == "nearest":
-            self.migrate_nearest()
-        elif self.evolve_strategy == "star":
-            self.migrate_star()
-        elif self.evolve_strategy == "random":
-            self.migrate_random()
-        elif self.evolve_strategy == "fully_connected":
-            self.migrate_fully_connected()
+            if self.evolve_strategy == "ring":
+                for i in range(self.num_islands):
+                    self.migrate_ring(left_island_index, right_island_index)
+            elif self.evolve_strategy == "multikuti":
+                self.multikuti_migration(left_island_index, right_island_index)
+            elif self.evolve_strategy == "nearest":
+                self.migrate_nearest(left_island_index, right_island_index)
+            elif self.evolve_strategy == "star":
+                self.migrate_star()
+            elif self.evolve_strategy == "random":
+                self.migrate_random()
+            elif self.evolve_strategy == "fully_connected":
+                self.migrate_fully_connected()
 
 
 

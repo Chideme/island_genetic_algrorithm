@@ -63,6 +63,8 @@ class PSOPortfolioOptimizer:
 
 
     def _get_profit(self, returns):
+        if returns.max() > 1:
+            print("‼️ Unrealistic monthly return > 100% detected")
         return (1 + returns).cumprod().iloc[-1] - 1
 
     def _get_mdd(self, returns):
@@ -92,7 +94,7 @@ class PSOPortfolioOptimizer:
         return np.concatenate([selection, weights])
     
 
-    def _generate_trading_signal(self, data, strategy):
+    def _generate_trading_signal1(self, data, strategy):
         monthly_returns = []
         monthly_return = 0
         monthly_freq = 0
@@ -125,8 +127,44 @@ class PSOPortfolioOptimizer:
                         monthly_return += trade_return
                         monthly_freq += 1
                         market_position = 'out'
+        if not monthly_returns:
+            print(f"⚠️  Strategy '{strategy}' returned empty monthly returns.")
+        elif any(np.isnan(x) for x in monthly_returns):
+            print(f"⚠️  Strategy '{strategy}' returned NaN in monthly returns.")
+        return monthly_returns
+    
+    def _generate_trading_signal(self, data, strategy):
+        monthly_returns = []
+        trade_returns = []
+        market_position = 'out'
+
+        for row in data.itertuples(index=False):
+            last_date = get_last_date_of_month(row.Date.year, row.Date.month)
+            strategy_signal = row._asdict()[strategy]
+
+            if market_position == 'out' and strategy_signal == 1:
+                cost_price = row.close
+                market_position = 'in'
+
+            elif market_position == 'in':
+                sell_price = row.close
+                trade_return = (sell_price - cost_price) / cost_price
+                if strategy_signal == 0 or row.Date == last_date:
+                    trade_returns.append(trade_return)
+                    market_position = 'out'
+
+            if row.Date == last_date:
+                if trade_returns:
+                    monthly_return = np.prod([1 + r for r in trade_returns]) - 1
+                else:
+                    monthly_return = 0
+                monthly_returns.append(monthly_return)
+                trade_returns = []
 
         return monthly_returns
+
+
+    
 
     def _portfolio_monthly_returns(self, selection, weights):
         selected_strategies = [s for s, sel in zip(self.strategies, selection) if sel == 1]
@@ -141,6 +179,12 @@ class PSOPortfolioOptimizer:
         selected_weights = weights[selection == 1]
         selected_weights = selected_weights / selected_weights.sum()
         portfolio_return = df.dot(selected_weights)
+        if portfolio_return.isnull().all():
+            print("⚠️  Portfolio returns are all NaN")
+            print("Selected strategies:", selected_strategies)
+            print("Return DataFrame:\n", df)
+            print("Selected weights:", selected_weights)
+
         return portfolio_return
 
     def _fitness_function(self, particle):
@@ -148,7 +192,10 @@ class PSOPortfolioOptimizer:
         portfolio_returns = self._portfolio_monthly_returns(selection, weights)
         profit = self._get_profit(portfolio_returns)
         mdd = self._get_mdd(portfolio_returns)
-        return profit / mdd if mdd > 0.01 else profit
+        if mdd is None or np.isnan(mdd) or mdd <= 0.01:
+            return profit
+        else:
+            return profit / mdd
 
 
 
