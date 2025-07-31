@@ -42,7 +42,7 @@ def model_results(model,current_train, current_test, strategies, pSize=150, num_
                 evolve_strategy=model)
         gtsp.evolve()
 
-         # Record training results
+        # Record training results
        
         train_results = (gtsp.globalBest.fitness_value, gtsp.globalBest.profit, gtsp.globalBest.mdd)
 
@@ -53,18 +53,16 @@ def model_results(model,current_train, current_test, strategies, pSize=150, num_
         return train_results, test_results
     
 
-
     elif model == 'pso':
         pso= PortfolioPSO(current_train,num_particles=pSize,iterations=num_iter)
         best_portfolio, weights, _ = pso.run()
-        returns = current_test[list(best_portfolio)]
         train_returns = current_train[list(best_portfolio)]
         train_results = sota_models.portfolio_metrics(best_portfolio,train_returns,weights)
         returns = current_test[list(best_portfolio)]
         returns = returns.dropna()
-        results = sota_models.portfolio_metrics(best_portfolio,returns,weights)
+        test_results = sota_models.portfolio_metrics(best_portfolio,returns,weights)
         
-        return results , train_results
+        return  train_results, test_results
         
 
 
@@ -109,7 +107,14 @@ class ModelComparator:
                 train_fitness = train_metrics[0]
                 train_returns = train_metrics[1]
                 train_mdd = train_metrics[2]
-          
+
+                # # store test metrics
+                test_fitness = test_metrics[0]
+                test_returns = test_metrics[1]
+                test_mdd = test_metrics[2]
+
+
+
                     
         
                 # Store training results
@@ -129,9 +134,9 @@ class ModelComparator:
                     'run': run,
                     'model': model,
                     'phase': 'validation',
-                    'fitness': test_metrics[0],
-                    'returns': test_metrics[1],
-                    'mdd': test_metrics[2]
+                    'fitness': test_fitness,
+                    'returns': test_returns,
+                    'mdd': test_mdd
                 
                 })
         

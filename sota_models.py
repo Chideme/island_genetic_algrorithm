@@ -232,12 +232,12 @@ def portfolio_metrics(assets,returns,weights):
    
   
     
-    std_dev = round(portfolio_std_dev(returns,weights) * 100,4)
+    std_dev = round(portfolio_std_dev(returns,weights),4)
     sharpe_ratio = round(portfolio_sharpe_ratio(returns,weights),4)
-    mdd =  round(calculate_mdd(weights,returns,assets)*100,4)
-    portfolio_returns = round(portfolio_return(returns,weights) * 100,4)
+    mdd =  round(calculate_mdd(weights,returns,assets),4)
+    portfolio_returns = round(portfolio_return(returns,weights),4)
     sortino_ratio = round(portfolio_sortino_ratio(returns, weights),4)
     calmar_ratio = round(portfolio_calmar_ratio(returns,weights,mdd),4)
-    return sharpe_ratio, portfolio_returns, std_dev, mdd , sortino_ratio, calmar_ratio
+    return sharpe_ratio, portfolio_returns, mdd, std_dev, sortino_ratio, calmar_ratio
 
   
