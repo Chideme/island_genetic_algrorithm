@@ -43,6 +43,7 @@ class IslandGGA():
         self.convergence_times = []
         self.island_convergence = []
         self.population = []
+        self.diversity_data = []
 
     def re_init(self):
         self.islands = []
@@ -93,7 +94,7 @@ class IslandGGA():
         if self.islands:
             convergence = []
             for island in self.islands:
-                island_average_fitness = sum([chromosome.fitness_value for chromosome in island ])/len(island)             
+                island_average_fitness = sum([chromosome.fitness_value for chromosome in island ])/len(island)  if len(island) > 0 else 0           
                 convergence.append(island_average_fitness)
             #self.island_convergence.append(convergence)
             self.convergence_values.append(np.mean(convergence))
@@ -104,6 +105,10 @@ class IslandGGA():
             
         
 ######## MIGRATION
+
+
+
+
 
 
     def best_chromosomes(self, population, N, q):
@@ -273,10 +278,48 @@ class IslandGGA():
         if best.fitness_value > self.globalBest.fitness_value:
                 self.globalBest = deepcopy(best)
 
+    def population_diversity(self, island):
+        """Calculate average Hamming distance between all chromosome pairs in an island."""
+        if len(island) <= 1:
+            return 0.0
+        
+        total_distance = 0
+        count = 0
+        for i in range(len(island)):
+            for j in range(i+1, len(island)):
+                # Use the chromosome's hamming_distance method
+                total_distance += island[i].hamming_distance(island[j])
+                count += 1
+        
+        return total_distance / count
+
+    
+    def track_diversity(self):
+        """Track diversity for the entire population (all islands combined)."""
+        # Combine all chromosomes from all islands into one population
+        all_chromosomes = []
+        if self.islands:
+            for island in self.islands:
+                all_chromosomes.extend(island)
+            
+            # Calculate diversity for the entire population
+            diversity = self.population_diversity(all_chromosomes)
+        else:
+            diversity =self.population_diversity(self.population)
+        
+        return diversity
+
+# Usage in your main loop:
+# diversity_data = []
+# for generation in range(max_generations):
+#     # Your evolution logic here
+#     diversities = self.track_diversity()
+#     diversity_data.append(diversities)
+
         
 
 
-    def migrate_nearest(self, left_island_index, right_island_index):
+    def migrate_nearest1(self, left_island_index, right_island_index):
         """Perform migration among the islands using the nearest neighbor strategy."""
         # Compute genetic distance between chromosomes in islands i and j
         distances = []
@@ -319,10 +362,169 @@ class IslandGGA():
 
 
 
+    def migrate_nearest(self, left_island_index, right_island_index):
+        """Perform migration among the islands using the nearest neighbor strategy."""
+        # Compute genetic distance between chromosomes in islands i and j
+        distances = []
+        for i, ind_i in enumerate(self.islands[left_island_index]):
+            for j, ind_j in enumerate(self.islands[right_island_index]):
+                distance = ind_i.hamming_distance(ind_j)
+                distances.append((i, j, distance))
 
+        # Sort by distance - use ascending for "nearest" (most similar)
+        distances.sort(key=lambda x: x[2])
+        
+        # Select pairs for migration (closest matches)
+        migrated_left = set()
+        migrated_right = set()
+        migrations = []
+        
+        for i, j, distance in distances:
+            if len(migrations) >= self.n_migrants:
+                break
+            if i not in migrated_left and j not in migrated_right:
+                migrations.append((i, j))
+                migrated_left.add(i)
+                migrated_right.add(j)
+        
+        # Perform the actual swaps
+        for i, j in migrations:
+            ind_left = self.islands[left_island_index][i]
+            ind_right = self.islands[right_island_index][j]
+            
+            # Swap individuals
+            self.islands[left_island_index][i] = ind_right
+            self.islands[right_island_index][j] = ind_left
+
+
+    def migrate_random(self):
+        """Each island sends migrants to a randomly selected island with replacement."""
+        # Create migration plan to avoid conflicts
+        migration_plan = []
+        
+        for i in range(self.num_islands):
+            # Select target island
+            target = random.choice([j for j in range(self.num_islands) if j != i])
+            
+            # Select migrants from source
+            migrants_indices = random.sample(range(len(self.islands[i])), 
+                                        min(self.n_migrants, len(self.islands[i])))
+            
+            # Select individuals to replace in target
+            replace_indices = random.sample(range(len(self.islands[target])), 
+                                        min(self.n_migrants, len(self.islands[target])))
+            
+            migration_plan.append((i, target, migrants_indices, replace_indices))
+        
+        # Execute migrations (swap individuals)
+        for source, target, migrant_idx, replace_idx in migration_plan:
+            for m_idx, r_idx in zip(migrant_idx, replace_idx):
+                # Swap individuals between islands
+                migrant = self.islands[source][m_idx]
+                replaced = self.islands[target][r_idx]
+                
+                self.islands[source][m_idx] = replaced
+                self.islands[target][r_idx] = migrant
+
+
+    def migrate_star(self):
+        """Perform star topology migration with island 0 as the hub."""
+        hub = 0
+        
+        # Collect all migrants that will go to hub
+        hub_incoming = []
+        spoke_replacements = {}  # Store what each spoke will receive
+        
+        # Phase 1: Collect migrants from spokes
+        for i in range(1, self.num_islands):
+            # Select best migrants from spoke
+            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
+            hub_incoming.extend(migrants)
+            
+            # Select what hub will send to this spoke
+            hub_migrants = self.select_best_chromosomes(self.islands[hub], self.n_migrants)
+            spoke_replacements[i] = hub_migrants
+        
+        # Phase 2: Execute the exchanges
+        # Remove migrants from spokes and add hub's contributions
+        for i in range(1, self.num_islands):
+            spoke_migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
+            hub_contributions = spoke_replacements[i]
+            
+            # Remove spoke's migrants
+            for ind in spoke_migrants:
+                if ind in self.islands[i]:
+                    self.islands[i].remove(ind)
+            
+            # Add hub's contributions to spoke
+            self.islands[i].extend(hub_contributions)
+        
+        # Remove hub's contributions from hub and add spoke migrants
+        for i in range(1, self.num_islands):
+            hub_contributions = spoke_replacements[i]
+            for ind in hub_contributions:
+                if ind in self.islands[hub]:
+                    self.islands[hub].remove(ind)
+        
+        # Add all incoming migrants to hub
+        self.islands[hub].extend(hub_incoming)
+
+    def migrate_fully_connected(self):
+        """Each island exchanges migrants with all other islands."""
+        # Create migration plan to avoid conflicts
+        migration_plan = {}
+        
+        # Plan all migrations first
+        for i in range(self.num_islands):
+            migrants = self.select_best_chromosomes(self.islands[i], 
+                                                self.n_migrants * (self.num_islands - 1))
+            migration_plan[i] = migrants
+        
+        # Execute migrations - each island receives from all others
+        for target in range(self.num_islands):
+            # Remove migrants that this island will send out
+            outgoing = migration_plan[target]
+            for ind in outgoing:
+                if ind in self.islands[target]:
+                    self.islands[target].remove(ind)
+            
+            # Add incoming migrants from all other islands
+            migrants_per_source = self.n_migrants
+            for source in range(self.num_islands):
+                if source != target:
+                    # Take migrants from the planned migrants of source island
+                    source_migrants = migration_plan[source]
+                    start_idx = target * migrants_per_source if target < source else (target - 1) * migrants_per_source
+                    end_idx = start_idx + migrants_per_source
+                    
+                    incoming = source_migrants[start_idx:end_idx]
+                    self.islands[target].extend(incoming)
+
+
+    # Alternative simpler approach for migrate_random:
+    def migrate_random_simple(self):
+        """Simple random migration - each island swaps individuals with a random partner."""
+        for i in range(self.num_islands):
+            # Pick a random partner
+            partner = random.choice([j for j in range(self.num_islands) if j != i])
+            
+            # Skip if this pair was already processed
+            if i > partner:  # Only process each pair once
+                continue
+                
+            # Select individuals to swap
+            i_migrants = random.sample(range(len(self.islands[i])), 
+                                    min(self.n_migrants, len(self.islands[i])))
+            p_migrants = random.sample(range(len(self.islands[partner])), 
+                                    min(self.n_migrants, len(self.islands[partner])))
+            
+            # Perform swaps
+            for idx_i, idx_p in zip(i_migrants, p_migrants):
+                self.islands[i][idx_i], self.islands[partner][idx_p] = \
+                    self.islands[partner][idx_p], self.islands[i][idx_i]
     
     def multikuti_migration(self, left_island_index, right_island_index):
-        """Perform migration among the islands in a ring topology."""
+        """Perform migration among the islands ."""
         # Compute genetic distance between chromosomes in islands i and j
         distances = []
         for i, ind_i in enumerate(self.islands[left_island_index]):
@@ -362,57 +564,11 @@ class IslandGGA():
                 self.islands[left_island_index].append(ind_j)
                 self.islands[right_island_index].append(ind_i)
 
-    def migrate_fully_connected(self):
-        """Each island sends migrants to all other islands."""
-        for i in range(self.num_islands):
-            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
+   
 
-            for j in range(self.num_islands):
-                if i != j:
-                    # Remove migrants from source and add to target
-                    for ind in migrants:
-                        if ind in self.islands[i]:  # Prevent duplicate migration
-                            self.islands[i].remove(ind)
-                            self.islands[j].append(ind.clone())  # Use copy if needed
+   
 
-    def migrate_star(self):
-        """Perform star topology migration with island 0 as the hub."""
-        hub = 0
-        hub_migrants = []
-
-        # Spokes send migrants to the hub
-        for i in range(1, self.num_islands):
-            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
-            for ind in migrants:
-                if ind in self.islands[i]:
-                    self.islands[i].remove(ind)
-                    hub_migrants.append(ind)
-
-        # Add to the hub
-        self.islands[hub].extend(hub_migrants)
-
-        # Hub sends back best migrants to each spoke
-        for i in range(1, self.num_islands):
-            migrants = self.select_best_chromosomes(self.islands[hub], self.n_migrants)
-            for ind in migrants:
-                if ind in self.islands[hub]:
-                    self.islands[hub].remove(ind)
-                    self.islands[i].append(ind.clone())
-
-
-
-    def migrate_random(self):
-        """Each island sends migrants to a randomly selected island."""
-        for i in range(self.num_islands):
-            target = random.choice([j for j in range(self.num_islands) if j != i])
-            migrants = self.select_best_chromosomes(self.islands[i], self.n_migrants)
-
-            for ind in migrants:
-                if ind in self.islands[i]:
-                    self.islands[i].remove(ind)
-                    self.islands[target].append(ind.clone())
-
-
+    
 
 
     def migrate_ring(self, left_island_index, right_island_index):
@@ -514,6 +670,8 @@ class IslandGGA():
             self.get_convergence()
             self.convergence_times.append(time.time() - start_time)
             self.get_global_best()
+            diversities = self.track_diversity()
+            self.diversity_data.append(diversities)
             print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value}  Average Fitness = {self.convergence_values[-1]}")
 
         # Return the best individual from each island
@@ -537,6 +695,8 @@ class IslandGGA():
             self.get_convergence()
             self.convergence_times.append(time.time() - start_time)
             self.get_global_best()
+            diversities = self.track_diversity()
+            self.diversity_data.append(diversities)
             print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value}  Average Fitness = {self.convergence_values[-1]}")
             
 
@@ -557,6 +717,8 @@ class IslandGGA():
             self.get_convergence()
             self.convergence_times.append(time.time() - start_time)
             self.get_global_best()
+            diversities = self.track_diversity()
+            self.diversity_data.append(diversities)
             print(f"Generation {iteration +1}: Best fitness = {self.globalBest.fitness_value}  Average Fitness = {self.convergence_values[-1]}")
 
     def evolve(self):

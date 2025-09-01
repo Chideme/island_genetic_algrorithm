@@ -117,8 +117,161 @@ class SingleAssetTI:
             lambda d: d['CCI'].astype(float) <= 100
         ]
 
+
+        # Expanded buying indicators using all available technical indicators
+        buying_indicators = [
+            # Moving Average Strategies
+            lambda d: d['5EMA'].astype(float) > d['20EMA'].astype(float),
+            lambda d: d['close'].astype(float) > d['5EMA'].astype(float),
+            lambda d: d['close'].astype(float) > d['20EMA'].astype(float),
+            lambda d: d['close'].astype(float) > d['TRIMA'].astype(float),
+            
+            # RSI Strategies
+            lambda d: d['RSI'].astype(float) > 30,
+            lambda d: d['RSI'].astype(float) < 30,  # Oversold buy signal
+            lambda d: (d['RSI'].astype(float) > 50) & (d['RSI'].astype(float) < 70),
+            
+            # Williams %R Strategies
+            lambda d: d['WILLR'].astype(float) < -80,  # Oversold
+            lambda d: d['WILLR'].astype(float) > -50,
+            lambda d: d['WILLR'].astype(float) > -20,  # Breaking resistance
+            
+            # Momentum Strategies
+            lambda d: d['MOM'].astype(float) > 0,
+            lambda d: d['MOM'].astype(float) > d['MOM'].shift(1).astype(float),  # Increasing momentum
+            
+            # CCI Strategies
+            lambda d: d['CCI'].astype(float) > 100,
+            lambda d: d['CCI'].astype(float) < -100,  # Oversold
+            lambda d: (d['CCI'].astype(float) > -100) & (d['CCI'].astype(float) < 100),
+            
+            # Stochastic Strategies
+            lambda d: d['SLOWK'].astype(float) > d['SLOWD'].astype(float),
+            lambda d: d['SLOWK'].astype(float) < 20,  # Oversold
+            lambda d: (d['SLOWK'].astype(float) > 20) & (d['SLOWK'].astype(float) < 80),
+            
+            # MACD Strategies
+            lambda d: d['MACD'].astype(float) > d['MACDSIGNAL'].astype(float),
+            lambda d: d['MACD'].astype(float) > 0,
+            lambda d: d['MACDHIST'].astype(float) > 0,
+            
+            # ADX/DMI Strategies
+            lambda d: d['ADX'].astype(float) > 25,  # Strong trend
+            lambda d: d['DMI'].astype(float) > 20,
+            
+            # Volume Strategies
+            lambda d: d['OBV'].astype(float) > d['OBV'].shift(1).astype(float),  # Volume confirmation
+            lambda d: d['MFI'].astype(float) < 20,  # Oversold by money flow
+            lambda d: d['MFI'].astype(float) > 50,
+            lambda d: d['ADOSC'].astype(float) > 0,
+            
+            # ROC and TRIX
+            lambda d: d['ROC'].astype(float) > 0,
+            lambda d: d['ROC'].astype(float) > 5,  # Strong positive ROC
+            lambda d: d['TRIX'].astype(float) > d['TRIX'].shift(1).astype(float),
+            
+            # Aroon Strategies
+            lambda d: d['AROON_UP'].astype(float) > d['AROON_DOWN'].astype(float),
+            lambda d: d['AROON_UP'].astype(float) > 70,
+            lambda d: d['AROON_DOWN'].astype(float) < 30,
+            
+            # Bollinger Bands
+            lambda d: d['close'].astype(float) < d['BBANDS_LOWER'].astype(float),  # Oversold
+            lambda d: d['close'].astype(float) > d['BBANDS_MIDDLE'].astype(float),
+            lambda d: (d['close'].astype(float) > d['BBANDS_LOWER'].astype(float)) & 
+                    (d['close'].astype(float) < d['BBANDS_MIDDLE'].astype(float)),
+            
+            # Parabolic SAR
+            lambda d: d['close'].astype(float) > d['SAR'].astype(float),
+            
+            # Stochastic RSI
+            lambda d: d['STOCHRSI_FASTK'].astype(float) > d['STOCHRSI_FASTD'].astype(float),
+            lambda d: d['STOCHRSI_FASTK'].astype(float) < 20,  # Oversold
+            
+            # ATR-based (volatility)
+            lambda d: d['ATR'].astype(float) > d['ATR'].shift(1).astype(float),  # Increasing volatility
+            lambda d: d['ATR'].astype(float) < d['ATR'].shift(5).rolling(5).mean().astype(float),  # Low volatility
+        ]
+        
+        # Expanded selling indicators (opposite conditions)
+        selling_indicators = [
+            # Moving Average Strategies
+            lambda d: d['5EMA'].astype(float) < d['20EMA'].astype(float),
+            lambda d: d['close'].astype(float) < d['5EMA'].astype(float),
+            lambda d: d['close'].astype(float) < d['20EMA'].astype(float),
+            lambda d: d['close'].astype(float) < d['TRIMA'].astype(float),
+            
+            # RSI Strategies
+            lambda d: d['RSI'].astype(float) < 70,
+            lambda d: d['RSI'].astype(float) > 70,  # Overbought sell signal
+            lambda d: (d['RSI'].astype(float) < 50) | (d['RSI'].astype(float) > 70),
+            
+            # Williams %R Strategies
+            lambda d: d['WILLR'].astype(float) > -20,  # Overbought
+            lambda d: d['WILLR'].astype(float) < -50,
+            lambda d: d['WILLR'].astype(float) < -80,  # Breaking support
+            
+            # Momentum Strategies
+            lambda d: d['MOM'].astype(float) <= 0,
+            lambda d: d['MOM'].astype(float) < d['MOM'].shift(1).astype(float),  # Decreasing momentum
+            
+            # CCI Strategies
+            lambda d: d['CCI'].astype(float) <= 100,
+            lambda d: d['CCI'].astype(float) > 100,  # Overbought
+            lambda d: (d['CCI'].astype(float) < -100) | (d['CCI'].astype(float) > 100),
+            
+            # Stochastic Strategies
+            lambda d: d['SLOWK'].astype(float) < d['SLOWD'].astype(float),
+            lambda d: d['SLOWK'].astype(float) > 80,  # Overbought
+            lambda d: (d['SLOWK'].astype(float) < 20) | (d['SLOWK'].astype(float) > 80),
+            
+            # MACD Strategies
+            lambda d: d['MACD'].astype(float) < d['MACDSIGNAL'].astype(float),
+            lambda d: d['MACD'].astype(float) < 0,
+            lambda d: d['MACDHIST'].astype(float) < 0,
+            
+            # ADX/DMI Strategies
+            lambda d: d['ADX'].astype(float) < 25,  # Weak trend
+            lambda d: d['DMI'].astype(float) < 20,
+            
+            # Volume Strategies
+            lambda d: d['OBV'].astype(float) < d['OBV'].shift(1).astype(float),  # Volume divergence
+            lambda d: d['MFI'].astype(float) > 80,  # Overbought by money flow
+            lambda d: d['MFI'].astype(float) < 50,
+            lambda d: d['ADOSC'].astype(float) < 0,
+            
+            # ROC and TRIX
+            lambda d: d['ROC'].astype(float) < 0,
+            lambda d: d['ROC'].astype(float) < -5,  # Strong negative ROC
+            lambda d: d['TRIX'].astype(float) < d['TRIX'].shift(1).astype(float),
+            
+            # Aroon Strategies
+            lambda d: d['AROON_DOWN'].astype(float) > d['AROON_UP'].astype(float),
+            lambda d: d['AROON_DOWN'].astype(float) > 70,
+            lambda d: d['AROON_UP'].astype(float) < 30,
+            
+            # Bollinger Bands
+            lambda d: d['close'].astype(float) > d['BBANDS_UPPER'].astype(float),  # Overbought
+            lambda d: d['close'].astype(float) < d['BBANDS_MIDDLE'].astype(float),
+            lambda d: (d['close'].astype(float) < d['BBANDS_UPPER'].astype(float)) & 
+                    (d['close'].astype(float) > d['BBANDS_MIDDLE'].astype(float)),
+            
+            # Parabolic SAR
+            lambda d: d['close'].astype(float) < d['SAR'].astype(float),
+            
+            # Stochastic RSI
+            lambda d: d['STOCHRSI_FASTK'].astype(float) < d['STOCHRSI_FASTD'].astype(float),
+            lambda d: d['STOCHRSI_FASTK'].astype(float) > 80,  # Overbought
+            
+            # ATR-based (volatility)
+            lambda d: d['ATR'].astype(float) < d['ATR'].shift(1).astype(float),  # Decreasing volatility
+            lambda d: d['ATR'].astype(float) > d['ATR'].shift(5).rolling(5).mean().astype(float),  # High volatility
+        ]
+
+
         #strategy_combinations = list(zip(buying_indicators, selling_indicators))
         strategy_combinations = list(product(buying_indicators, selling_indicators))
+        strategy_combinations = strategy_combinations[:100]  # Limit to first 50 combinations
 
         # Optionally expand to 50 strategies with more combinations
         # You can uncomment below and add more logic-based combinations if needed

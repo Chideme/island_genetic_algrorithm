@@ -12,7 +12,7 @@ import time
 from island_ga import IslandGGA 
 
 from chromosome import Chromosome 
-
+from diversified_strategies import DiversifiedTradingStrategies
 from single_data_processing import SingleAssetTI
 
 import itertools
@@ -33,9 +33,9 @@ def model_results(model,current_train, current_test, strategies, pSize=150, num_
     if model != 'pso':
         gtsp = IslandGGA(
                 data=current_train,
-                K=8,
-                num_islands=10,
-                m_iter=10,
+                K=2,
+                num_islands=5,
+                m_iter=5,
                 num_iter=50,
                 pSize=150,
                 strategies=strategies,
@@ -70,15 +70,17 @@ def model_results(model,current_train, current_test, strategies, pSize=150, num_
 
 
 class ModelComparator:
-    def __init__(self, stock_ticker,start_date, end_date, pSize,num_iter, num_runs=6,
-                optimization_approaches = ["ring", "multikuti", "master_slave", "gga", "pso"]):
-        self.stock_ticker = stock_ticker
+    def __init__(self, stock_tickers,period,start_date, end_date, pSize,num_iter, num_runs=6,
+                optimization_approaches = ["ring", "multikuti", "master_slave", "gga", "pso"],diversified=True):
+        self.diversified = diversified
+        self.stock_tickers = stock_tickers if self.diversified else stock_tickers[0]
         self.start_date = start_date
         self.end_date = end_date
         self.num_runs = num_runs
         self.pSize = pSize
         self.num_iter = num_iter
         self.optimization_approaches = optimization_approaches
+        self.period = period
 
     def run_comparison(self):
 
@@ -88,15 +90,31 @@ class ModelComparator:
             self.start_date = pd.to_datetime(self.start_date)
         if isinstance(self.end_date, str):
             self.end_date = pd.to_datetime(self.end_date)
+        if self.diversified:
+            diversified_system = DiversifiedTradingStrategies(
+            tickers=self.stock_tickers,
+            start_date=self.start_date,
+            end_date=self.end_date',
+            test_period=self.period
+        )
     
-        data = SingleAssetTI(self.stock_ticker,self.start_date,self.end_date,2019)
-        data.data_preprocess()
-        train_data = data.train_data    
-        val_data = data.test_data
-        train_data = train_data.dropna()
-        val_data = val_data.dropna()
-        strategies = data.strategies
-    
+            # Generate training returns
+            print("Generating diversified training strategies...")
+            train_data = diversified_system.generate_diversified_returns(is_training=True)
+            
+            # Generate test returns
+            print("Generating diversified test strategies...")
+            val_data = diversified_system.generate_diversified_returns(is_training=False)
+            strategies = diversified_system.c
+        else:
+            data = SingleAssetTI(self.stock_ticker,self.start_date,self.end_date,self.period)
+            data.data_preprocess()
+            train_data = data.train_data    
+            val_data = data.test_data
+            train_data = train_data.dropna()
+            val_data = val_data.dropna()
+            strategies = data.strategies
+        
         for run in range(self.num_runs):
             for model in self.optimization_approaches:
                 print("Running model: ", model)
