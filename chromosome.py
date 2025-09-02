@@ -6,11 +6,13 @@ import math
 import talib as ta
 import pandas as pd
 import multiprocess as mp
+import itertools
 import matplotlib.pyplot as plt
 from datetime import datetime,date, timedelta
 import time
 from sklearn.preprocessing import MinMaxScaler
 from copy import deepcopy
+
 
 
 def get_last_date_of_month(year, month):
@@ -402,7 +404,7 @@ class Chromosome():
             fitness = self.profit + self.gb 
         self.fitness_value = fitness
 
-    def calculate_chromosome_fitness(self,monthly_returns,allocated_capital):
+    def calculate_chromosome_fitness1(self,monthly_returns,allocated_capital):
         
        
         mean_return = monthly_returns.mean()
@@ -428,13 +430,135 @@ class Chromosome():
         self.profit =self.get_gstp_profit(tsps)
         self.gb = self.groupBalance()
         if self.mdd > 0.01:
-            fitness = (self.profit / self.mdd)  + self.gb 
+            fitness = (self.profit / self.mdd)  
         else:
-            fitness = self.profit + self.gb 
+            fitness = self.profit 
         self.fitness_value = fitness
+        
         self.tsps = tsps
+
+
+
+
+    def calculate_chromosome_fitness11(self, monthly_returns, allocated_capital):
+        group_returns = []
+        
+        # Precompute group-level returns (average of strategies in group)
+        for group in self.group_part:
+            group_df = monthly_returns[group]
+            group_returns.append(group_df)
+
+        # Instead of generating all portfolios, approximate by combining group means
+        # For two groups: average of outer products
+        # For more groups: expand similarly
+        # Here we sample efficiently rather than full Cartesian product
+        
+        profits = []
+        mdds = []
+        for portfolio in itertools.product(*group_returns):
+            portfolio_df = pd.concat(portfolio, axis=1)
+            portfolio_mean = portfolio_df.mean(axis=1)  # average returns of strategies in this portfolio
+            profits.append(portfolio_mean.mean())
+            mdds.append(self.calculate_mdd_from_series(portfolio_mean))
+        
+        # Aggregate (mean across combinations)
+        self.profit = np.mean(profits)
+        self.mdd = np.mean(mdds)
+        self.gb = self.groupBalance()
+
+        # Fitness function
+        if self.mdd > 0.01:
+            fitness = self.profit / self.mdd
+        else:
+            fitness = self.profit
+        self.fitness_value = fitness
+
+
+    def calculate_chromosome_fitness(self, monthly_returns, allocated_capital):
+        """
+        Fast chromosome-specific fitness calculation
+        """
+        # Generate portfolios from THIS chromosome's grouping
+        portfolios = list(itertools.product(*self.group_part))
+        
+        # Quick evaluation - sample max 20 portfolios for speed
+        sample_size = min(20, len(portfolios))
+        if len(portfolios) > sample_size:
+            sampled_indices = np.random.choice(len(portfolios), sample_size, replace=False)
+            sampled_portfolios = [portfolios[i] for i in sampled_indices]
+        else:
+            sampled_portfolios = portfolios
+            
+        # Calculate metrics for sampled portfolios
+        profits = [self.calculate_profit(p, monthly_returns) for p in sampled_portfolios]
+        mdds = [self.calculate_mdd(p, monthly_returns) for p in sampled_portfolios]
+        
+        # Create tsps DataFrame
+        self.tsps = pd.DataFrame({
+            'Portfolio': sampled_portfolios,
+            'Profit': profits,
+            'MDD': mdds
+        })
+        
+        # FIXED AGGREGATION - Make it chromosome-specific
+        self.mdd = self.get_gstp_mdd_fixed(self.tsps)
+        self.profit = self.get_gstp_profit_fixed(self.tsps)
+        self.gb = self.groupBalance()
+        
+        # Fitness calculation
+        if self.mdd > 0.01:
+            fitness = self.profit / self.mdd
+        else:
+            fitness = self.profit
+            
+        self.fitness_value = fitness
+        return fitness
+
+    def get_gstp_mdd_fixed(self, tsps):
+        """
+        FIXED: Use best portfolio's MDD instead of mean
+        This makes each chromosome unique!
+        """
+        if tsps.empty:
+            return 0.01
+            
+        # Method 1: Use MDD of the best performing portfolio
+        best_portfolio_idx = tsps['Profit'].idxmax()
+        mdd = tsps.loc[best_portfolio_idx, 'MDD']
+        
+        # Method 2: Use worst-case MDD (most conservative)
+        # mdd = tsps['MDD'].max()
+        
+        # Method 3: Weighted average (balance performance and risk)
+        # weights = tsps['Profit'] / tsps['Profit'].sum()
+        # mdd = (tsps['MDD'] * weights).sum()
+        
+        return mdd
     
-    
+    def get_gstp_profit_fixed(self, tsps):
+        """
+        FIXED: Use best portfolio's profit instead of mean
+        This makes each chromosome unique!
+        """
+        if tsps.empty:
+            return 0
+            
+        # Method 1: Use profit of the best performing portfolio
+        profit = tsps['Profit'].max()
+        
+        # Method 2: Use top quartile average
+        # top_quartile = int(len(tsps) * 0.25) + 1
+        # profit = tsps.nlargest(top_quartile, 'Profit')['Profit'].mean()
+        
+        # Method 3: Risk-adjusted selection
+        # tsps['SharpeRatio'] = tsps['Profit'] / tsps['MDD']
+        # best_sharpe_idx = tsps['SharpeRatio'].idxmax()
+        # profit = tsps.loc[best_sharpe_idx, 'Profit']
+        
+        return profit
+
+
+        
     
     def scale_fitness(self,max_fitness,min_fitness):
         # Linear scalin

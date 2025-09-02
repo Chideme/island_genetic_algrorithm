@@ -20,6 +20,7 @@ class DiversifiedTradingStrategies:
         self.strategy_returns = {}
         self.strategy_performance = {}
         self.load_all_data()
+        self.strategy_names = []
         
     def load_all_data(self):
         """Load data for all tickers"""
@@ -215,8 +216,9 @@ class DiversifiedTradingStrategies:
         all_strategies = (asset_specific_strategies + timeframe_strategies + 
                          correlation_strategies + regime_strategies + mixed_strategies)
         
-        # Limit to 100 strategies
-        return all_strategies[:100]
+        # Limit to 70 strategies
+    
+        return all_strategies[:70]
 
     def generate_diversified_returns(self, is_training=True):
         """Generate returns for all diversified strategies"""
@@ -245,6 +247,7 @@ class DiversifiedTradingStrategies:
                         'ticker': ticker,
                         'strategy_type': strategy.get('regime', {}).get('name', 'general')
                     }
+                    self.strategy_names.append(strategy['name'])
                     
             except Exception as e:
                 print(f"Error with strategy {strategy['name']}: {e}")

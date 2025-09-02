@@ -94,7 +94,7 @@ class ModelComparator:
             diversified_system = DiversifiedTradingStrategies(
             tickers=self.stock_tickers,
             start_date=self.start_date,
-            end_date=self.end_date',
+            end_date=self.end_date,
             test_period=self.period
         )
     
@@ -105,9 +105,10 @@ class ModelComparator:
             # Generate test returns
             print("Generating diversified test strategies...")
             val_data = diversified_system.generate_diversified_returns(is_training=False)
-            strategies = diversified_system.c
+            strategies = diversified_system.strategy_names
         else:
-            data = SingleAssetTI(self.stock_ticker,self.start_date,self.end_date,self.period)
+            stock_ticker = self.stock_tickers[0]
+            data = SingleAssetTI(stock_ticker,self.start_date,self.end_date,self.period)
             data.data_preprocess()
             train_data = data.train_data    
             val_data = data.test_data

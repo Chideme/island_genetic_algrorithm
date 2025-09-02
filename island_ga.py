@@ -11,6 +11,8 @@ from datetime import datetime,date, timedelta
 from chromosome import Chromosome
 from copy import deepcopy
 import time
+import traceback
+from contextlib import contextmanager
 
 class IslandGGA():
 
@@ -207,23 +209,217 @@ class IslandGGA():
         q.put(island)
 
     
-    def parallel_genetic_operations11(self):
-        
-        # create a process pool with the number of worker processes equal to the number of islands
-        pool = mp.Pool(processes=len(self.islands))
-
-        # iterate over the islands and apply the parallel genetic operations
-        results = [pool.apply_async(self.operations, args=(island,)) for island in self.islands]
-
-        # wait for all processes to finish and retrieve the results
-        islands = [result.get() for result in results]
-        #islands = [self.operations(i) for i in self.islands]
-        pool.close()
-        pool.join()
-        # update the population
-        self.islands = islands
+    @contextmanager
+    def cleanup_processes(self, processes, queues):
+        """Context manager to ensure proper cleanup"""
+        try:
+            yield processes, queues
+        finally:
+            # Force cleanup of all processes and queues
+            for process in processes:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=1)
+                    if process.is_alive():
+                        process.kill()
+                process.close()
+            
+            # Clear queues to prevent memory leaks
+            for queue in queues:
+                try:
+                    while not queue.empty():
+                        queue.get_nowait()
+                except:
+                    pass
+                queue.close()
+                queue.join_thread()
 
     def parallel_genetic_operations(self):
+        """
+        IMPROVED: Evolve each island per generation with proper cleanup
+        """
+        if not self.islands:
+            print("Warning: No islands to process")
+            return
+            
+        processes = []
+        result_queues = []
+        
+        try:
+            # Create processes and queues
+            for j in range(len(self.islands)):
+                result_queue = mp.Queue()
+                # Deep copy the island to avoid shared state issues
+                island_copy = deepcopy(self.islands[j])
+                process = mp.Process(
+                    target=self.safe_operations, 
+                    args=(island_copy, result_queue, j)
+                )
+                process.start()
+                processes.append(process)
+                result_queues.append(result_queue)
+            
+            # Wait for all processes with timeout
+            results = [None] * len(self.islands)
+            completed = [False] * len(processes)
+            
+            for i, process in enumerate(processes):
+                try:
+                    process.join(timeout=30)  # 30 second timeout per process
+                    if process.is_alive():
+                        print(f"Warning: Process {i} timed out, terminating...")
+                        process.terminate()
+                        process.join(timeout=5)
+                    completed[i] = not process.is_alive()
+                except Exception as e:
+                    print(f"Error joining process {i}: {e}")
+            
+            # Collect results from successful processes
+            for j in range(len(self.islands)):
+                if completed[j]:
+                    try:
+                        if not result_queues[j].empty():
+                            results[j] = result_queues[j].get_nowait()
+                        else:
+                            print(f"Warning: No result from process {j}")
+                            results[j] = self.islands[j]  # Keep original
+                    except Exception as e:
+                        print(f"Error getting result from queue {j}: {e}")
+                        results[j] = self.islands[j]  # Keep original
+                else:
+                    print(f"Process {j} failed, keeping original island")
+                    results[j] = self.islands[j]  # Keep original
+            
+            # Update islands with results
+            for j, result in enumerate(results):
+                if result is not None:
+                    self.islands[j] = result
+                    
+        except Exception as e:
+            print(f"Critical error in parallel operations: {e}")
+            traceback.print_exc()
+        
+        finally:
+            # CRITICAL: Cleanup all processes and queues
+            with self.cleanup_processes(processes, result_queues):
+                pass
+
+    def safe_operations(self, island, result_queue, island_id):
+        """
+        IMPROVED: Safe wrapper for operations with error handling
+        """
+        try:
+            # Process the island
+            self.operations(island,result_queue)
+            #evolved_island = self.operations(island,result_queue)
+            #result_queue.put(evolved_island)
+            
+        except Exception as e:
+            print(f"Error in island {island_id} operations: {e}")
+            # Put original island back if operation fails
+            result_queue.put(island)
+        
+        finally:
+            # Ensure queue is marked as done
+            try:
+                result_queue.close()
+            except:
+                pass
+
+    def master_fitness_function(self):
+        """
+        IMPROVED: Master-slave fitness calculation with proper cleanup
+        """
+        if not self.population:
+            print("Warning: No population to process")
+            return []
+            
+        self.islands = list(self.make_islands(self.population))
+        processes = []
+        result_queues = []
+        
+        try:
+            # Create processes
+            for i in range(len(self.islands)):
+                result_queue = mp.Queue()
+                # Deep copy to avoid shared state
+                island_copy = deepcopy(self.islands[i])
+                process = mp.Process(
+                    target=self.safe_fitness_fun, 
+                    args=(island_copy, result_queue, i)
+                )
+                process.start()
+                processes.append(process)
+                result_queues.append(result_queue)
+            
+            # Wait for completion with timeout
+            children = []
+            for i, process in enumerate(processes):
+                try:
+                    process.join(timeout=60)  # 60 second timeout
+                    if process.is_alive():
+                        print(f"Fitness process {i} timed out, terminating...")
+                        process.terminate()
+                        process.join(timeout=5)
+                    
+                    # Get result if available
+                    if not result_queues[i].empty():
+                        result = result_queues[i].get_nowait()
+                        children.extend(result)
+                    else:
+                        print(f"Warning: No fitness result from process {i}")
+                        
+                except Exception as e:
+                    print(f"Error in fitness process {i}: {e}")
+            
+            return children
+            
+        except Exception as e:
+            print(f"Critical error in master fitness function: {e}")
+            traceback.print_exc()
+            return []
+        
+        finally:
+            # CRITICAL: Cleanup
+            with self.cleanup_processes(processes, result_queues):
+                pass
+
+    def safe_fitness_fun(self, island, result_queue, island_id):
+        """
+        IMPROVED: Safe fitness function with error handling
+        """
+        try:
+            # Calculate fitness for the island
+            self.update_pop_fitness_values(island)
+            result_queue.put(island)
+            
+        except Exception as e:
+            print(f"Error calculating fitness for island {island_id}: {e}")
+            result_queue.put(island)  # Return original island
+        
+        finally:
+            try:
+                result_queue.close()
+            except:
+                pass
+
+    def reset_multiprocessing(self):
+        """
+        CRITICAL: Call this between runs to reset multiprocessing state
+        """
+        try:
+            # Force garbage collection
+            import gc
+            gc.collect()
+            
+            # Reset any class-level multiprocessing state
+            if hasattr(self, '_mp_context'):
+                delattr(self, '_mp_context')
+                
+        except Exception as e:
+            print(f"Warning during multiprocessing reset: {e}")
+
+    def parallel_genetic_operations1(self):
         """evolve each island per generation"""  
         #evolve
         processes = []
@@ -239,12 +435,12 @@ class IslandGGA():
         for j in range(len(self.islands)):
             self.islands[j] = result_queues[j].get() 
 
-    def fitness_fun(self,island,q):
+    def fitness_fun1(self,island,q):
         """Master slave migration"""
         self.update_pop_fitness_values(island)
         q.put(island) 
 
-    def master_fitness_function(self):
+    def master_fitness_function1(self):
         """Master slave migration""" 
         self.islands = list(self.make_islands(self.population))
         processes = []
