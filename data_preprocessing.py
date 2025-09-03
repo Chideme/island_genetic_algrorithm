@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime,date, timedelta
 import time
-from island_ga import IslandGGA 
+from islandga import IslandGGA 
 from chromosome import Chromosome 
 import itertools
 import yfinance as yf
@@ -78,7 +78,7 @@ class Data:
         df.reset_index(inplace=True)
         df = df.rename(columns={
                             'Close': 'close', 'Volume': 'volume',
-                            'Open': 'open', 'High': 'high', 'Low': 'low'
+                            'Open': 'open', 'High': 'high', 'Low': 'low'   
                         })
         self.data = df
     

@@ -29,15 +29,15 @@ import sota_models
 
 
 
-def model_results(model,current_train, current_test, strategies, pSize=150, num_iter=50):
+def model_results(model,current_train, current_test, strategies, pSize, num_iter, K, m_iter, num_islands):
     if model != 'pso':
         gtsp = IslandGGA(
                 data=current_train,
                 K=2,
                 num_islands=5,
                 m_iter=5,
-                num_iter=50,
-                pSize=150,
+                num_iter=num_iter,
+                pSize=pSize,
                 strategies=strategies,
                 evolve_strategy=model)
         gtsp.evolve()
@@ -70,7 +70,7 @@ def model_results(model,current_train, current_test, strategies, pSize=150, num_
 
 
 class ModelComparator:
-    def __init__(self, stock_tickers,period,start_date, end_date, pSize,num_iter, num_runs=6,
+    def __init__(self, stock_tickers,period,start_date, end_date, pSize, K,num_iter, m_iter, num_islands,num_runs,
                 optimization_approaches = ["ring", "multikuti", "master_slave", "gga", "pso"],diversified=True):
         self.diversified = diversified
         self.stock_tickers = stock_tickers if self.diversified else stock_tickers[0]
@@ -81,6 +81,9 @@ class ModelComparator:
         self.num_iter = num_iter
         self.optimization_approaches = optimization_approaches
         self.period = period
+        self.K = K
+        self.m_iter = m_iter
+        self.num_islands = num_islands
 
     def run_comparison(self):
 
@@ -99,13 +102,10 @@ class ModelComparator:
         )
     
             # Generate training returns
-            print("Generating diversified training strategies...")
-            train_data = diversified_system.generate_diversified_returns(is_training=True)
-            
-            # Generate test returns
-            print("Generating diversified test strategies...")
-            val_data = diversified_system.generate_diversified_returns(is_training=False)
+            print("Generating diversified training and tesing strategies...")
+            train_data, val_data = diversified_system.generate_diversified_returns(is_training=True)
             strategies = diversified_system.strategy_names
+           
         else:
             stock_ticker = self.stock_tickers[0]
             data = SingleAssetTI(stock_ticker,self.start_date,self.end_date,self.period)
@@ -119,8 +119,9 @@ class ModelComparator:
         for run in range(self.num_runs):
             for model in self.optimization_approaches:
                 print("Running model: ", model)
-                # model_results(model,current_train, current_test, strategies, pSize=10, num_iter=2)
-                train_metrics, test_metrics = model_results(model, train_data, val_data, strategies, self.pSize, self.num_iter)
+                print("Run: ", run+1, " out of ", self.num_runs)
+                # model_results(model,current_train, current_test, strategies, pSize, num_iter, K, m_iter, num_islands)
+                train_metrics, test_metrics = model_results(model, train_data, val_data, strategies, self.pSize, self.num_iter, self.K, self.m_iter, self.num_islands)  
                 
                
                 train_fitness = train_metrics[0]

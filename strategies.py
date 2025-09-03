@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime,date
 import time
-from island_ga import IslandGGA 
+from islandga import IslandGGA 
 from chromosome import Chromosome 
 import itertools
 import yfinance as yf

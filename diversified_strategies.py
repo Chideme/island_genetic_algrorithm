@@ -81,36 +81,39 @@ class DiversifiedTradingStrategies:
         
         # 1. ASSET-SPECIFIC STRATEGIES (20 strategies)
         asset_specific_strategies = []
-        
+
+        # Replace the lambda functions with proper closure handling:
         for i, ticker in enumerate(self.tickers[:5]):  # Use first 5 tickers
             # Each ticker gets 4 specialized strategies
             strategies = [
                 {
                     'name': f'Momentum_{ticker}',
                     'ticker': ticker,
-                    'buy': lambda d: (d['RSI'] > 50) & (d['5EMA'] > d['20EMA']),
-                    'sell': lambda d: (d['RSI'] < 50) | (d['5EMA'] < d['20EMA'])
+                    'buy': (lambda d, t=ticker: (d['RSI'] > 50) & (d['5EMA'] > d['20EMA'])),
+                    'sell': (lambda d, t=ticker: (d['RSI'] < 50) | (d['5EMA'] < d['20EMA']))
                 },
                 {
                     'name': f'MeanReversion_{ticker}',
                     'ticker': ticker,
-                    'buy': lambda d: (d['RSI'] < 30) & (d['close'] < d['BBANDS_LOWER']),
-                    'sell': lambda d: (d['RSI'] > 70) | (d['close'] > d['BBANDS_UPPER'])
+                    'buy': (lambda d, t=ticker: (d['RSI'] < 30) & (d['close'] < d['BBANDS_LOWER'])),
+                    'sell': (lambda d, t=ticker: (d['RSI'] > 70) | (d['close'] > d['BBANDS_UPPER']))
                 },
                 {
                     'name': f'Breakout_{ticker}',
                     'ticker': ticker,
-                    'buy': lambda d: (d['close'] > d['BBANDS_UPPER']) & (d['ADX'] > 25),
-                    'sell': lambda d: (d['close'] < d['BBANDS_MIDDLE']) | (d['ADX'] < 20)
+                    'buy': (lambda d, t=ticker: (d['close'] > d['BBANDS_UPPER']) & (d['ADX'] > 25)),
+                    'sell': (lambda d, t=ticker: (d['close'] < d['BBANDS_MIDDLE']) | (d['ADX'] < 20))
                 },
                 {
                     'name': f'Volume_{ticker}',
                     'ticker': ticker,
-                    'buy': lambda d: (d['OBV'] > d['OBV'].shift(1)) & (d['MFI'] < 20),
-                    'sell': lambda d: (d['OBV'] < d['OBV'].shift(1)) | (d['MFI'] > 80)
+                    'buy': (lambda d, t=ticker: (d['OBV'] > d['OBV'].shift(1)) & (d['MFI'] < 20)),
+                    'sell': (lambda d, t=ticker: (d['OBV'] < d['OBV'].shift(1)) | (d['MFI'] > 80))
                 }
             ]
             asset_specific_strategies.extend(strategies)
+        
+        
 
         # 2. MULTI-TIMEFRAME STRATEGIES (20 strategies)
         # Simulate different timeframes by using different MA periods
@@ -218,13 +221,16 @@ class DiversifiedTradingStrategies:
         
         # Limit to 70 strategies
     
-        return all_strategies[:70]
+        return all_strategies
 
     def generate_diversified_returns(self, is_training=True):
         """Generate returns for all diversified strategies"""
         strategies = self.create_diversified_strategies()
-        data_dict = self.train_data if is_training else self.test_data
+        #data_dict = self.train_data if is_training else self.test_data
+        data_dict = self.all_data
         strategy_returns = {}
+        # test 
+        test_strategy_returns = {}
         
         for strategy in strategies:
             ticker = strategy['ticker']
@@ -237,11 +243,15 @@ class DiversifiedTradingStrategies:
                 
                 buy_condition = strategy['buy'](processed_data)
                 sell_condition = strategy['sell'](processed_data)
-                
+                test_processed_data = processed_data[processed_data['Date'].dt.year >= self.test_period]
+                test_buy_condition = strategy['buy'](test_processed_data)
+                test_sell_condition = strategy['sell'](test_processed_data)
+                test_sharpe, test_returns = self.evaluate_strategy(test_processed_data, test_buy_condition, test_sell_condition)
                 sharpe, returns = self.evaluate_strategy(processed_data, buy_condition, sell_condition)
                 
-                if len(returns) > 0:
+                if len(returns) and len(test_returns)  > 0:
                     strategy_returns[strategy['name']] = returns
+                    test_strategy_returns[strategy['name']] = test_returns
                     self.strategy_performance[strategy['name']] = {
                         'sharpe': sharpe,
                         'ticker': ticker,
@@ -252,8 +262,10 @@ class DiversifiedTradingStrategies:
             except Exception as e:
                 print(f"Error with strategy {strategy['name']}: {e}")
                 continue
+        train_data = pd.DataFrame(strategy_returns)
+        test_data = pd.DataFrame(test_strategy_returns)
         
-        return pd.DataFrame(strategy_returns)
+        return train_data, test_data
 
     def analyze_diversity(self, returns_df):
         """Analyze the diversity of the strategy returns"""

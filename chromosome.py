@@ -348,28 +348,12 @@ class Chromosome():
         monthly_returns = pd.DataFrame.from_dict(monthly_returns)
         return monthly_returns
     
-    def get_gstp_mdd(self,tsps):
-        """Calculate the MDD for the GTSP"""
-        #max_index= tsps['profit'].idxmax()
-        #mdd  = tsps.loc[max_index, 'MDD']
-       
-        mdd= tsps['MDD'].mean()
-        return mdd
-    
-    def get_gstp_profit(self, tsps):
-        """Calculate the profit for the GTSP"""
-        #tsps['Profit'].mean()
-        #max_index= tsps['SharpeRatio'].idxmax()
-        #profit  = tsps.loc[max_index, 'Profit']
 
-       
-        profit = tsps['Profit'].mean()
-        return profit
-    
     
     
     def calculate_profit(self,portfolio,monthly_returns):
         """Calculate the profit for a Portfolio (TSP)"""
+
         weights =  self.decode_weights()
         cumulative_returns =  (1 + monthly_returns[list(portfolio)]).cumprod().iloc[-1]-1
         final_portfolio_return = (cumulative_returns * weights).sum()
@@ -390,88 +374,6 @@ class Chromosome():
         drawdowns = (cumulative_returns - previous_peaks) / (1 + previous_peaks)
         mdd = drawdowns.min()
         return mdd
-
-    def calculate_chromosome_fitness1(self,data,allocated_capital):
-        monthly_returns = self.monthly_returns(data)
-        #self.mdd= self.getMDD(monthly_returns)
-        self.mdd
-        self.profit =self.getProfit(monthly_returns,allocated_capital)
-        #self.corr = self.getCorrelation(monthly_returns)
-        self.gb = self.groupBalance()
-        if self.mdd > 0.01:
-            fitness = (self.profit / self.mdd)  + self.gb 
-        else:
-            fitness = self.profit + self.gb 
-        self.fitness_value = fitness
-
-    def calculate_chromosome_fitness1(self,monthly_returns,allocated_capital):
-        
-       
-        mean_return = monthly_returns.mean()
-        #std_dev = monthly_returns.std()
-        # Initialize an empty DataFrame without the profit column
-        
-        # Calculate Sharpe ratio for each asset
-        risk_free_rate = 0.0 # Replace with the appropriate risk-free rate
-        #sharpe_ratio = (mean_return - risk_free_rate) / std_dev
-
-        # Create a DataFrame of Sharpe ratios
-        sharpe_df = pd.DataFrame(mean_return, columns=['mean_return'])
-        portfolio = []
-        for group in self.group_part:
-            df = sharpe_df.loc[group]
-            max_index = df['mean_return'].idxmax()
-            portfolio.append(max_index)
-        portfolio = [portfolio]
-        tsps = pd.DataFrame({'Portfolio': portfolio})
-        tsps['Profit'] = tsps['Portfolio'].apply(lambda portfolio: self.calculate_profit(portfolio, monthly_returns))
-        tsps['MDD'] = tsps['Portfolio'].apply(lambda portfolio: self.calculate_mdd(portfolio, monthly_returns))
-        self.mdd= self.get_gstp_mdd(tsps)
-        self.profit =self.get_gstp_profit(tsps)
-        self.gb = self.groupBalance()
-        if self.mdd > 0.01:
-            fitness = (self.profit / self.mdd)  
-        else:
-            fitness = self.profit 
-        self.fitness_value = fitness
-        
-        self.tsps = tsps
-
-
-
-
-    def calculate_chromosome_fitness11(self, monthly_returns, allocated_capital):
-        group_returns = []
-        
-        # Precompute group-level returns (average of strategies in group)
-        for group in self.group_part:
-            group_df = monthly_returns[group]
-            group_returns.append(group_df)
-
-        # Instead of generating all portfolios, approximate by combining group means
-        # For two groups: average of outer products
-        # For more groups: expand similarly
-        # Here we sample efficiently rather than full Cartesian product
-        
-        profits = []
-        mdds = []
-        for portfolio in itertools.product(*group_returns):
-            portfolio_df = pd.concat(portfolio, axis=1)
-            portfolio_mean = portfolio_df.mean(axis=1)  # average returns of strategies in this portfolio
-            profits.append(portfolio_mean.mean())
-            mdds.append(self.calculate_mdd_from_series(portfolio_mean))
-        
-        # Aggregate (mean across combinations)
-        self.profit = np.mean(profits)
-        self.mdd = np.mean(mdds)
-        self.gb = self.groupBalance()
-
-        # Fitness function
-        if self.mdd > 0.01:
-            fitness = self.profit / self.mdd
-        else:
-            fitness = self.profit
-        self.fitness_value = fitness
 
 
     def calculate_chromosome_fitness(self, monthly_returns, allocated_capital):
