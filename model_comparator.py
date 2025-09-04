@@ -33,9 +33,9 @@ def model_results(model,current_train, current_test, strategies, pSize, num_iter
     if model != 'pso':
         gtsp = IslandGGA(
                 data=current_train,
-                K=2,
-                num_islands=5,
-                m_iter=5,
+                K=K,
+                num_islands=num_islands,
+                m_iter=m_iter,
                 num_iter=num_iter,
                 pSize=pSize,
                 strategies=strategies,
@@ -47,7 +47,7 @@ def model_results(model,current_train, current_test, strategies, pSize, num_iter
         train_results = (gtsp.globalBest.fitness_value, gtsp.globalBest.profit, gtsp.globalBest.mdd)
 
         # Evaluate on test data
-        gtsp.globalBest.calculate_chromosome_fitness(current_test, allocated_capital=1)
+        gtsp.globalBest.calculate_chromosome_fitness(current_test, is_training=False)
         test_results = (gtsp.globalBest.fitness_value, gtsp.globalBest.profit, gtsp.globalBest.mdd)
 
         return train_results, test_results

@@ -7,6 +7,8 @@ import talib as ta
 import pandas as pd
 import multiprocess as mp
 import itertools
+from typing import List, Tuple, Optional
+from functools import lru_cache
 import matplotlib.pyplot as plt
 from datetime import datetime,date, timedelta
 import time
@@ -55,6 +57,12 @@ class Chromosome():
         self.weight_part = []
         self.weights=[]
         self.bbb = []
+        self.tsps = pd.DataFrame()
+        """Initialize with caching support"""
+        self._fitness_cache = {}
+        self._cache_size = 256
+        self._cache_hits = 0
+        self._cache_misses = 0
 
     def __str__(self):
         return f"SLTP: {self.sltp_part}\nGROUP: {self.group_part}\nWEIGHT: {self.weight_part}\nFITNESS: {  self.fitness_value}"
@@ -283,70 +291,9 @@ class Chromosome():
         tp = self.take_profit/max_tp * tp
         return sl,tp
     
-    def generate_trading_signal(self,data,strategy,stop_loss,take_profit):
-        monthly_returns = []
-        monthly_return = 0
-        trade_freq = 0
-        monthly_freq = 0
-        market_position = 'out'
-        max_loss = 0
-        for row in data.itertuples(index=False):    
-            #close all trade positions at month end. 
-            last_date = get_last_date_of_month(row.Date.year,row.Date.month)
-            if row.Date == last_date:
-                if market_position =='in':
-                    sell_price = row.close
-                    trade_return = (sell_price - cost_price)/cost_price
-                    market_position = 'out' 
-                    trade_freq +=1
-                    monthly_freq +=1
-                    monthly_return += trade_return
-                    avg_monthly_return =monthly_return/monthly_freq
-                    monthly_returns.append(avg_monthly_return)
-                    monthly_return = 0
-                    monthly_freq = 0     
-                else:
-                    try:
-                        avg_monthly_return = monthly_return/monthly_freq
-                    except ZeroDivisionError:
-                        avg_monthly_return = 0
-                    monthly_returns.append(avg_monthly_return)
-                
-                    monthly_return = 0
-                    monthly_freq = 0         
-            else:
-                if market_position == 'out' :
-                    if row[data.columns.get_loc(strategy)] == 1:
-                        cost_price = row.close
-                        market_position = 'in'
-                        
-                else:
-                    sell_price = row.close
-                    trade_return = (sell_price - cost_price)/cost_price
-                    if trade_return <= stop_loss or trade_return >= take_profit: 
-                        trade_freq +=1
-                        monthly_freq+=1
-                        if trade_return < max_loss:
-                            max_loss = trade_return
-                        monthly_return += trade_return
-                        market_position = 'out'   
-                        
-                    if row[data.columns.get_loc(strategy)] == 0 and trade_return >= take_profit :
-                        trade_freq +=1
-                        monthly_freq+=1
-                        if trade_return < max_loss:
-                            max_loss = trade_return
-                        monthly_return += trade_return
-                        market_position = 'out'
-        return monthly_returns
     
-    def monthly_returns(self,data):
-        chromomosome_stop_loss, chromomosome_take_profit = self.binary_to_sltp()
-        monthly_returns = {}
-        for strategy in self.strategies:
-            monthly_returns[strategy] =  self.generate_trading_signal(data,strategy,chromomosome_stop_loss,chromomosome_take_profit)
-        monthly_returns = pd.DataFrame.from_dict(monthly_returns)
-        return monthly_returns
+    
+  
     
 
     
@@ -376,7 +323,7 @@ class Chromosome():
         return mdd
 
 
-    def calculate_chromosome_fitness(self, monthly_returns, allocated_capital):
+    def calculate_chromosome_fitness11(self, monthly_returns, allocated_capital):
         """
         Fast chromosome-specific fitness calculation
         """
@@ -404,6 +351,7 @@ class Chromosome():
         
         # FIXED AGGREGATION - Make it chromosome-specific
         self.mdd = self.get_gstp_mdd_fixed(self.tsps)
+
         self.profit = self.get_gstp_profit_fixed(self.tsps)
         self.gb = self.groupBalance()
         
@@ -583,5 +531,194 @@ class Chromosome():
             self.group_part = self.group_part[::-1]
         
     
+    #### Optimized Fitness with Caching
     
-    
+        
+    def calculate_chromosome_fitness(self, monthly_returns, is_training=True):
+        """
+        Optimized fitness calculation with caching
+        """
+        # CACHING: Check if we've seen this chromosome before
+        chromosome_hash = self._hash_chromosome()
+        
+        if chromosome_hash in self._fitness_cache and is_training:
+            self._cache_hits += 1
+            cached_result = self._fitness_cache[chromosome_hash]
+            self.fitness_value = cached_result['fitness']
+            self.profit = cached_result['profit'] 
+            self.mdd = cached_result['mdd']
+            self.gb = cached_result['gb']
+            # Don't recreate tsps DataFrame - it's expensive and often unused
+            return self.fitness_value
+        if is_training:
+            self._cache_misses += 1
+        
+        # MAJOR ISSUE 1: You're generating ALL possible portfolios with itertools.product
+        # This explodes exponentially! For groups of size [10,10,10] = 1000 portfolios
+        # For [20,15,12,8] = 28,800 portfolios!
+        
+        # SOLUTION 1: Don't generate all portfolios - use smarter sampling
+        total_combinations = 1
+        for group in self.group_part:
+            total_combinations *= len(group)
+        
+        # If combination space is huge, sample strategically instead
+        if total_combinations > 500:  # Adjust threshold as needed
+            portfolios = self._strategic_sample_portfolios(max_samples=50)
+        else:
+            # Only generate all portfolios for small spaces
+            portfolios = list(itertools.product(*self.group_part))
+            
+        # MAJOR ISSUE 2: Random sampling on large lists is inefficient
+        # Your current: np.random.choice(len(portfolios), sample_size, replace=False)
+        
+        # SOLUTION 2: Use systematic sampling for better coverage
+        sample_size = min(20, len(portfolios))
+        if len(portfolios) > sample_size:
+            # Systematic sampling - much faster and better coverage
+            step = len(portfolios) // sample_size
+            indices = [i * step for i in range(sample_size)]
+            sampled_portfolios = [portfolios[i] for i in indices]
+        else:
+            sampled_portfolios = portfolios
+        
+        # MAJOR ISSUE 3: Creating DataFrame for each fitness call is expensive
+        # SOLUTION 3: Pre-calculate weights once, use numpy operations
+        
+        weights = self.decode_weights()  # Calculate once
+        
+        # Vectorized profit/MDD calculation
+        profits = []
+        mdds = []
+        
+        for portfolio in sampled_portfolios:
+            # Optimized profit - avoid intermediate DataFrames
+            portfolio_data = monthly_returns[list(portfolio)]
+            cumulative_returns = (1 + portfolio_data).cumprod().iloc[-1] - 1
+            profit = (cumulative_returns * weights).sum()
+            profits.append(profit)
+            
+            # Optimized MDD - vectorized operations
+            weighted_returns = portfolio_data * weights  # Broadcasting
+            portfolio_returns = weighted_returns.sum(axis=1)
+            cumulative = (1 + portfolio_returns).cumprod()
+            peaks = cumulative.cummax()
+            drawdowns = (cumulative - peaks) / (1 + peaks)
+            mdd = drawdowns.min()
+            mdds.append(mdd)
+        
+        # MAJOR ISSUE 4: Creating DataFrame just for aggregation is wasteful
+        # SOLUTION 4: Direct numpy aggregation
+        
+        profits = np.array(profits)
+        mdds = np.array(mdds)
+        
+        # Simple aggregation - adjust as needed
+        self.mdd = np.mean(mdds)
+        self.profit = np.mean(profits) 
+        self.gb = self.groupBalance()
+        
+        # Fitness calculation
+        if self.mdd > 0.01:
+            fitness = self.profit / self.mdd
+        else:
+            fitness = self.profit
+            
+        self.fitness_value = fitness
+        
+        # CACHE the result
+        self._cache_result(chromosome_hash, fitness, self.profit, self.mdd, self.gb)
+        
+        return fitness
+
+    def _hash_chromosome(self):
+        """Create a hash of the chromosome for caching"""
+        try:
+            # Hash the group_part structure
+            if hasattr(self, 'group_part'):
+                # Convert to hashable tuple format
+                hashable_groups = []
+                for group in self.group_part:
+                    if hasattr(group, '__iter__') and not isinstance(group, str):
+                        hashable_groups.append(tuple(sorted(group)))
+                    else:
+                        hashable_groups.append(group)
+                
+                chromosome_repr = tuple(hashable_groups)
+                return hash(chromosome_repr)
+        except (TypeError, AttributeError):
+            pass
+        
+        # Fallback: use object id (less cache-friendly but safe)
+        return id(self.group_part) if hasattr(self, 'group_part') else id(self)
+
+    def _cache_result(self, chromosome_hash, fitness, profit, mdd, gb):
+        """Cache the fitness result"""
+        # Store result
+        self._fitness_cache[chromosome_hash] = {
+            'fitness': fitness,
+            'profit': profit, 
+            'mdd': mdd,
+            'gb': gb
+        }
+        
+        # Manage cache size - remove oldest entries if too large
+        if len(self._fitness_cache) > self._cache_size:
+            # Remove oldest 25% of entries (simple FIFO)
+            items_to_remove = len(self._fitness_cache) - int(self._cache_size * 0.75)
+            keys_to_remove = list(self._fitness_cache.keys())[:items_to_remove]
+            for key in keys_to_remove:
+                self._fitness_cache.pop(key, None)
+
+    def get_cache_stats(self):
+        """Get cache performance statistics"""
+        total_requests = self._cache_hits + self._cache_misses
+        hit_rate = self._cache_hits / total_requests if total_requests > 0 else 0
+        return {
+            'cache_size': len(self._fitness_cache),
+            'cache_hits': self._cache_hits,
+            'cache_misses': self._cache_misses, 
+            'hit_rate': hit_rate,
+            'total_requests': total_requests
+        }
+
+    def clear_cache(self):
+        """Clear the fitness cache"""
+        self._fitness_cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    def _strategic_sample_portfolios(self, max_samples=50):
+        """
+        Sample portfolios strategically without generating full cartesian product
+        """
+        portfolios = []
+        seen = set()
+        
+        # Strategy 1: Random sampling
+        for _ in range(max_samples // 2):
+            portfolio = tuple(np.random.choice(group) for group in self.group_part)
+            if portfolio not in seen:
+                portfolios.append(portfolio)
+                seen.add(portfolio)
+        
+        # Strategy 2: Edge cases (first/last elements from each group)
+        import itertools
+        edges = [[group[0], group[-1]] if len(group) > 1 else [group[0]] 
+                for group in self.group_part]
+        
+        for portfolio in itertools.product(*edges):
+            if len(portfolios) >= max_samples:
+                break
+            if portfolio not in seen:
+                portfolios.append(portfolio)
+                seen.add(portfolio)
+        
+        # Strategy 3: Fill remaining with pure random
+        while len(portfolios) < max_samples:
+            portfolio = tuple(np.random.choice(group) for group in self.group_part)
+            if portfolio not in seen:
+                portfolios.append(portfolio)
+                seen.add(portfolio)
+        
+        return portfolios

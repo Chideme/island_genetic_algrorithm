@@ -18,7 +18,7 @@ import os
 
 class IslandGGA():
 
-    def __init__(self,data,strategies,num_islands=8,num_iter=50,pSize=100,m_iter=5,n_migrants_rate=0.5,K=4,r_cross=0.6,r_mut=0.01,r_inv=0.1,r_elite=0.5,n=8,b=8,stop_loss=-0.15,take_profit=0.15,allocated_capital=1,selection_strategy="elit",evolve_strategy="ring", max_workers=None):
+    def __init__(self,data,strategies,num_islands=8,num_iter=50,pSize=100,m_iter=5,n_migrants_rate=0.5,K=4,r_cross=0.6,r_mut=0.01,r_inv=0.1,r_elite=0.2,n=8,b=8,stop_loss=-0.15,take_profit=0.15,selection_strategy="elit",evolve_strategy="ring", max_workers=None):
         self.data = data
         self.K = K
         self.pSize = pSize
@@ -35,7 +35,6 @@ class IslandGGA():
         self.b = b
         self.stop_loss = stop_loss
         self.take_profit = take_profit
-        self.allocated_capital = allocated_capital
         self.selection_strategy = selection_strategy
         self.evolve_strategy = evolve_strategy
         self.num_weight = (self.K*2) + 1
@@ -125,7 +124,7 @@ class IslandGGA():
     
     def update_pop_fitness_values(self,island):
         for chromosome in island:
-            chromosome.calculate_chromosome_fitness(self.data,self.allocated_capital)
+            chromosome.calculate_chromosome_fitness(self.data,is_training=True)
         return island
 
     def genetic_operations_roul(self,population):
@@ -154,8 +153,8 @@ class IslandGGA():
             child1.inversion(self.r_inv)
             child2.mutation(self.r_mut)
             child2.inversion(self.r_inv)
-            child1.calculate_chromosome_fitness(self.data,self.allocated_capital)
-            child2.calculate_chromosome_fitness(self.data,self.allocated_capital)
+            child1.calculate_chromosome_fitness(self.data,is_training=True)
+            child2.calculate_chromosome_fitness(self.data,is_training=True)
             if child2.fitness_value > child1.fitness_value:
                 children.append(child2)
             else:
